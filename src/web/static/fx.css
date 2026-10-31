@@ -1,0 +1,148 @@
+/* ==========================================================================
+   Visual effects layer ("Aurora Studio"). Original implementations of familiar patterns
+   (aurora background, spotlight cards, border beam, shimmer button, blur-fade, equalizer, switches).
+   Everything here is decorative: it is switched off by prefers-reduced-motion or Settings -> Visual effects,
+   uses only transform/opacity/gradients (cheap), and pauses while the window is hidden.
+   body.fx-full | fx-subtle | fx-off is set by js/fx.js.
+   ========================================================================== */
+:root { --np: 29 185 84; }                       /* "now playing" accent (R G B), driven by the cover art */
+:root[data-theme="light"] { --np: 22 163 74; }
+
+/* Pause every decorative animation while the window is in the background */
+body.is-hidden *, body.is-hidden *::before, body.is-hidden *::after { animation-play-state: paused !important; }
+
+/* ---------- Aurora ambient background (lives inside <main>, behind the content) ---------- */
+#fx-aurora { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+#fx-aurora i { position: absolute; display: block; width: 62vmax; height: 62vmax; border-radius: 50%; will-change: transform; }
+#fx-aurora i:nth-child(1) { top: -34vmax; left: -14vmax; background: radial-gradient(closest-side, rgb(29 185 84 / .20), transparent 72%); animation: fx-drift-a 38s ease-in-out infinite alternate; }
+#fx-aurora i:nth-child(2) { top: -20vmax; right: -26vmax; background: radial-gradient(closest-side, rgb(var(--np) / .18), transparent 72%); animation: fx-drift-b 46s ease-in-out infinite alternate; }
+#fx-aurora i:nth-child(3) { bottom: -40vmax; left: 18vmax; background: radial-gradient(closest-side, rgb(99 102 241 / .13), transparent 72%); animation: fx-drift-a 54s ease-in-out infinite alternate-reverse; }
+:root[data-theme="light"] #fx-aurora i { opacity: .55; }
+@keyframes fx-drift-a { from { transform: translate3d(0, 0, 0) scale(1); } to { transform: translate3d(9vmax, 6vmax, 0) scale(1.18); } }
+@keyframes fx-drift-b { from { transform: translate3d(0, 0, 0) scale(1.1); } to { transform: translate3d(-8vmax, 9vmax, 0) scale(.94); } }
+body.fx-subtle #fx-aurora i { animation: none; opacity: .75; }
+body.fx-off #fx-aurora { display: none; }
+#main-content > header, #main-content > #subnav-wrap, #main-content > #content-scroll { position: relative; z-index: 1; }
+
+/* ---------- Spotlight cards: a soft glow that follows the pointer ---------- */
+.fx-card { position: relative; isolation: isolate; transition: border-color .25s, transform .25s, box-shadow .25s; }
+.fx-card::before {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; z-index: -1; pointer-events: none; opacity: 0; transition: opacity .3s;
+  background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgb(var(--np) / .16), transparent 62%);
+}
+.fx-card:hover::before { opacity: 1; }
+.fx-card:hover { border-color: rgb(var(--np) / .35); }
+body.fx-off .fx-card::before { display: none; }
+
+/* ---------- Border beam: a light that travels around a card ---------- */
+@property --beam-a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+.fx-beam { position: relative; }
+.fx-beam::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.5px; pointer-events: none;
+  background: conic-gradient(from var(--beam-a), transparent 0 62%, rgb(var(--np) / .9) 82%, transparent 100%);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+}
+body.fx-full .fx-beam::after { animation: fx-beam 7s linear infinite; }
+body.fx-off .fx-beam::after { display: none; }
+@keyframes fx-beam { to { --beam-a: 360deg; } }
+
+/* ---------- Shimmer button ---------- */
+.btn-shimmer { position: relative; overflow: hidden; }
+.btn-shimmer::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none; transform: translateX(-130%);
+  background: linear-gradient(110deg, transparent 32%, rgb(255 255 255 / .5) 50%, transparent 68%);
+}
+body.fx-full .btn-shimmer::after { animation: fx-shimmer 3.6s ease-in-out infinite; }
+body.fx-subtle .btn-shimmer:hover::after, body.fx-full .btn-shimmer:hover::after { animation: fx-shimmer 1s ease-out 1; }
+body.fx-off .btn-shimmer::after { display: none; }
+@keyframes fx-shimmer { 0%, 55% { transform: translateX(-130%); } 100% { transform: translateX(130%); } }
+
+/* ---------- Animated gradient / shiny text ---------- */
+.fx-gradient-text {
+  background: linear-gradient(90deg, rgb(var(--fg)) 0%, rgb(var(--np)) 45%, rgb(var(--fg)) 90%); background-size: 220% auto;
+  -webkit-background-clip: text; background-clip: text; color: transparent; -webkit-text-fill-color: transparent;
+}
+body.fx-full .fx-gradient-text { animation: fx-gradient 9s linear infinite; }
+body.fx-off .fx-gradient-text { background: none; color: rgb(var(--fg)); -webkit-text-fill-color: currentColor; }
+@keyframes fx-gradient { to { background-position: -220% center; } }
+.fx-shine { background: linear-gradient(110deg, currentColor 35%, rgb(255 255 255 / .95) 50%, currentColor 65%); background-size: 250% 100%; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }
+body.fx-full .fx-shine, body.fx-subtle .fx-shine { animation: fx-shine 2.6s linear infinite; }
+body.fx-off .fx-shine { background: none; -webkit-text-fill-color: currentColor; }
+@keyframes fx-shine { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+/* ---------- Blur-fade entrance for the children of the section that just opened ---------- */
+body:not(.fx-off) .tab-content:not(.hidden) > * { animation: fx-blur-in .5s cubic-bezier(.16, 1, .3, 1) backwards; animation-delay: calc(var(--i, 0) * 55ms); }
+.tab-content:not(.hidden) > :nth-child(1) { --i: 0; } .tab-content:not(.hidden) > :nth-child(2) { --i: 1; }
+.tab-content:not(.hidden) > :nth-child(3) { --i: 2; } .tab-content:not(.hidden) > :nth-child(4) { --i: 3; }
+.tab-content:not(.hidden) > :nth-child(5) { --i: 4; } .tab-content:not(.hidden) > :nth-child(6) { --i: 5; }
+.tab-content:not(.hidden) > :nth-child(n + 7) { --i: 6; }
+@keyframes fx-blur-in { from { opacity: 0; transform: translateY(12px); filter: blur(6px); } to { opacity: 1; transform: none; filter: blur(0); } }
+body.fx-subtle .tab-content:not(.hidden) > * { animation-name: fx-fade-in; }
+@keyframes fx-fade-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* ---------- Particle network canvas (Home) ---------- */
+canvas.fx-net { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; border-radius: inherit; opacity: .55; }
+body:not(.fx-full) canvas.fx-net { display: none; }
+.fx-net-host > :not(canvas):not(.sr-only) { position: relative; z-index: 1; }
+
+/* ---------- Equalizer bars (playing state) ---------- */
+.fx-eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; color: #1DB954; }
+.fx-eq b { display: block; width: 3px; height: 35%; background: currentColor; border-radius: 1px; }
+body.is-playing .fx-eq b { animation: fx-eq 900ms ease-in-out infinite; }
+body.is-playing .fx-eq b:nth-child(2) { animation-delay: -300ms; } body.is-playing .fx-eq b:nth-child(3) { animation-delay: -600ms; }
+body.is-playing .fx-eq b:nth-child(4) { animation-delay: -150ms; }
+@keyframes fx-eq { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+.fx-eq-cover { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; background: rgb(0 0 0 / .45); }
+body.is-playing .fx-eq-cover { display: flex; }
+
+/* Now-playing glow on the player bar, tinted by the cover art */
+#player-bar { box-shadow: 0 -10px 40px -18px rgb(var(--np) / .55); transition: box-shadow .8s; }
+#player-bar::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 1px; background: linear-gradient(90deg, transparent, rgb(var(--np) / .8), transparent); pointer-events: none; }
+body.fx-off #player-bar { box-shadow: none; }
+body.fx-off #player-bar::before { display: none; }
+
+/* ---------- Switches (settings checkboxes) ---------- */
+#settings-form input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex-shrink: 0; position: relative; width: 2.35rem; height: 1.3rem; border-radius: 9999px;
+  background: rgb(var(--s4)); border: 1px solid rgb(var(--line2)); cursor: pointer; transition: background .2s, border-color .2s;
+}
+#settings-form input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.3rem - 6px); height: calc(1.3rem - 6px); border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgb(0 0 0 / .45); transition: transform .22s cubic-bezier(.16, 1, .3, 1);
+}
+#settings-form input[type="checkbox"]:checked { background: #1DB954; border-color: #1DB954; }
+#settings-form input[type="checkbox"]:checked::after { transform: translateX(1.05rem); }
+#settings-form input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+
+/* ---------- Toast countdown ---------- */
+.toast-item { position: relative; overflow: hidden; }
+.toast-bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: currentColor; opacity: .45; transform-origin: left; animation: fx-countdown linear forwards; }
+.toast-item:hover .toast-bar { animation-play-state: paused; }
+@keyframes fx-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* ---------- Sidebar polish ---------- */
+.nav-btn i, .nav-btn svg { transition: transform .2s cubic-bezier(.16, 1, .3, 1); }
+.nav-btn:hover i, .nav-btn:hover svg { transform: scale(1.14); }
+body.sidebar-collapsed .nav-btn:hover i, body.sidebar-collapsed .nav-btn:hover svg { transform: scale(1.3); }
+
+/* ---------- Floating illustration for empty states ---------- */
+.fx-float { animation: fx-float 4.5s ease-in-out infinite; }
+body.fx-off .fx-float { animation: none; }
+@keyframes fx-float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-6px); } }
+
+/* ---------- Command palette ---------- */
+#cmdk-panel { box-shadow: 0 30px 80px -20px rgb(0 0 0 / .7), 0 0 0 1px rgb(var(--np) / .18); }
+#cmdk-list [role="option"][aria-selected="true"] { background: rgb(var(--np) / .14); }
+#cmdk-list [role="option"][aria-selected="true"] .cmdk-kbd { opacity: 1; }
+.cmdk-kbd { opacity: 0; }
+
+/* ---------- Wizard stepper ---------- */
+.wiz-dot { width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--s4)); transition: width .3s, background .3s; }
+.wiz-dot[aria-current="step"] { width: 1.6rem; background: #1DB954; }
+.wiz-dot.is-done { background: rgb(var(--np)); }
+[data-wizard-step] { animation: fx-fade-in .3s ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  #fx-aurora i, .fx-beam::after, .btn-shimmer::after, .fx-gradient-text, .fx-shine, .fx-float { animation: none !important; }
+}

@@ -1,0 +1,48 @@
+[project]
+name = "spotify-downloader-studio"
+dynamic = ["version"]
+description = "Local Windows desktop app for resolving Spotify links, downloading, tagging and managing a music library."
+requires-python = ">=3.10"   # developed and fully tested on 3.14 (3.10 also passes)
+readme = "README.md"
+license = { file = "LICENSE" }
+
+[tool.setuptools.dynamic]
+version = { attr = "src.version.__version__" }
+
+[tool.ruff]
+line-length = 140
+target-version = "py310"
+extend-exclude = [".venv", ".venv*", "build", "dist", "tools/frontend/node_modules", "temp", ".cache", "ui_backup_original"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I"]
+ignore = [
+    "E501",  # long lines: the codebase uses long SQL/HTML strings
+    "B008",
+    "I001",  # import ordering is not enforced yet
+    "E701",  # compact one-line guard clauses ("if not x: continue") are used throughout
+    "E702",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E402", "F401", "B011"]   # tests import _hermetic first, before src
+"build_*.py" = ["E402"]
+"main.py" = ["E402"]                    # sys.path bootstrap must run before the project imports
+"src/mcp_server/server.py" = ["E402"]   # same bootstrap
+
+[tool.coverage.run]
+source = ["src"]
+branch = false
+
+[tool.coverage.report]
+skip_empty = true
+show_missing = false
+
+[tool.mypy]
+python_version = "3.14"
+ignore_missing_imports = true
+check_untyped_defs = false
+explicit_package_bases = true
+namespace_packages = true
+mypy_path = "."
+files = ["src"]

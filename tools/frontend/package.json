@@ -1,0 +1,14 @@
+{
+  "name": "studio-frontend-assets",
+  "private": true,
+  "description": "Build-time only: compiles Tailwind CSS and vendors lucide + fonts into src/web/static. Nothing here ships or runs at runtime.",
+  "scripts": {
+    "build": "tailwindcss -c tailwind.config.js -i input.css -o ../../src/web/static/css/tailwind.css --minify"
+  },
+  "dependencies": {
+    "@fontsource/jetbrains-mono": "5.3.0",
+    "@fontsource/plus-jakarta-sans": "5.3.0",
+    "lucide": "1.66.0",
+    "tailwindcss": "3.4.17"
+  }
+}

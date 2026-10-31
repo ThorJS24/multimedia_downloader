@@ -1,0 +1,42 @@
+# ---- Secrets & personal data (AGENTS.md: never persisted in git) ----
+.cache/
+config/config.json
+data/
+logs/
+downloads/
+temp/
+*.db
+*.db-wal
+*.db-shm
+credentials.json
+
+# ---- Environments & tool caches ----
+.venv/
+.venv310/
+venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+tools/frontend/node_modules/
+tools/frontend/.npm-cache/
+
+# ---- Build output ----
+build/
+dist/
+*.spec.bak
+
+# ---- Large third-party binaries (download separately; see README) ----
+bin/ffmpeg.exe
+bin/ffprobe.exe
+tools/InnoSetup/
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Pre-redesign copy of the UI kept for reference (safe to delete)
+ui_backup_original/
