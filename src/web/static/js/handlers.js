@@ -1192,10 +1192,6 @@ H["deleteLibraryView"] = function (event, __a) {
     deleteLibraryView();
 };
 
-H["setFxChoiceFromInput"] = function (event, __a) {
-    setFxChoice(this.value);
-};
-
 H["wizardNext"] = function (event, __a) {
     wizardNext();
 };

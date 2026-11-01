@@ -48,7 +48,7 @@ Optional switches, from a terminal: `--browser` (open in your web browser instea
   * 🎧 **Library**: *Tracks* (sortable, with the built-in player), *Discover* (multi-source search), *Health* (one-glance score; every problem tile jumps to where you fix it, and **Fix tags & artwork automatically** looks missing details up on MusicBrainz / Cover Art Archive for you to review), *Quality*, *Releases*, *Cleanup* (duplicates and temp files, with a one-click "keep the best copy" plan you review and can undo).
   * ⚙️ **Automation**: *Playlist sync*, *Artist monitor*, *Folder watcher*, *Rules & hooks*, *Plugins* (built-in feature switches and plugin packs such as Discord, Slack, ntfy and Home Assistant notifications; see `docs/plugins.md`).
   * 🔧 **Settings**: *Preferences* (searchable, one save bar, download schedule, notifications and minimise-to-tray, database backups with restore) and *Diagnostics* (live log stream).
-* **Look & feel**: dark, light or follow-Windows theme and adjustable visual effects (Full / Subtle / Off; Windows "reduce motion" is respected), album-art-tinted accents, collapsible sidebar.
+* **Look & feel**: dark, light or follow-Windows theme, a quiet neutral palette with one green accent, tabular figures for sizes and counts, collapsible sidebar. No decorative effects: motion is limited to short feedback and one fade when a section opens (and none when Windows "reduce motion" is on).
 * **Command palette**: `Ctrl+K` jumps to any section, runs an action or finds and plays a song. Other shortcuts: `/` search, `Alt+1…5` destinations, `Space` play/pause, `?` for help.
 * **Safety nets**: confirmation dialogs for anything destructive, undo for queue removals and bulk reorganise, "Show in folder" after exports.
 

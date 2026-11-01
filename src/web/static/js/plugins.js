@@ -62,17 +62,17 @@ function packCardHtml(p) {
   const status = p.last_status
     ? `<p class="text-2xs ${p.last_status.ok ? "text-emerald-400" : "text-red-400"}">Last attempt (${escapeHtml(when)}): ${escapeHtml(p.last_status.detail)}</p>` : "";
   const buttons = p.enabled
-    ? `<button type="button" data-on-click="pluginsSave" data-args-click="${jsonAttr([p.id, true])}" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">Save changes</button>
+    ? `<button type="button" data-on-click="pluginsSave" data-args-click="${jsonAttr([p.id, true])}" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs">Save changes</button>
        <button type="button" data-on-click="pluginsTest" data-args-click="${jsonAttr([p.id])}" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg">Send a test</button>
        <button type="button" data-on-click="pluginsSave" data-args-click="${jsonAttr([p.id, false])}" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg2">Turn off</button>`
-    : `<button type="button" data-on-click="pluginsSave" data-args-click="${jsonAttr([p.id, true])}" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">Turn on</button>`;
+    : `<button type="button" data-on-click="pluginsSave" data-args-click="${jsonAttr([p.id, true])}" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs">Turn on</button>`;
   const removal = p.source === "imported"
     ? `<button type="button" data-on-click="pluginsRemove" data-args-click="${jsonAttr([p.id, p.name])}" class="px-4 py-2 rounded-xl text-red-300 hover:bg-red-950/40 border border-line text-xs font-semibold">Remove</button>`
     : "";
   return `<article id="pack-${escapeHtml(p.id)}" data-pack="${escapeHtml(p.id)}" class="p-5 rounded-2xl bg-s1 border border-line space-y-3" aria-labelledby="pack-h-${escapeHtml(p.id)}">
     <div class="flex flex-wrap items-start justify-between gap-2">
       <div class="min-w-0">
-        <h4 id="pack-h-${escapeHtml(p.id)}" class="text-sm font-bold text-fg">${escapeHtml(p.name)} <span class="ml-1 text-2xs font-mono font-normal text-fg4">v${escapeHtml(p.version)}${p.author ? ` · ${escapeHtml(p.author)}` : ""}</span></h4>
+        <h4 id="pack-h-${escapeHtml(p.id)}" class="text-sm font-semibold text-fg">${escapeHtml(p.name)} <span class="ml-1 text-2xs font-mono font-normal text-fg4">v${escapeHtml(p.version)}${p.author ? ` · ${escapeHtml(p.author)}` : ""}</span></h4>
         <p class="text-xs text-fg3 mt-0.5 max-w-3xl">${escapeHtml(p.description)}</p>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
@@ -81,7 +81,7 @@ function packCardHtml(p) {
       </div>
     </div>
     <div class="rounded-xl bg-s2 border border-line p-3">
-      <div class="text-2xs font-bold uppercase tracking-wide text-fg3 mb-1">What it will do</div>
+      <div class="text-2xs font-semibold text-fg3 mb-1">What it will do</div>
       <ul class="space-y-1 text-xs text-fg2 list-disc pl-4">${p.permissions.map((line) => `<li>${escapeHtml(line)}</li>`).join("")}</ul>
     </div>
     ${p.settings.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${p.settings.map((s) => packFieldHtml(p, s)).join("")}</div>` : ""}

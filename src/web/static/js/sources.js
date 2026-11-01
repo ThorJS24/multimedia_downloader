@@ -92,7 +92,7 @@ function renderUnifiedSearchResults(data) {
         </div>
         <div>
           <div class="flex items-center space-x-2 mb-1.5">${provBadge}</div>
-          <h2 class="text-xl font-black text-fg group-hover:underline truncate">${escapeHtml(top.title)}</h2>
+          <h2 class="text-xl font-semibold text-fg group-hover:underline truncate">${escapeHtml(top.title)}</h2>
           <p class="text-xs text-fg3 truncate">${escapeHtml(top.primary_creator || 'Unknown')}</p>
         </div>
       </div>
@@ -112,14 +112,14 @@ function renderUnifiedSearchResults(data) {
       const provBadge = getProviderBadgeHtml(item.provider);
       const durStr = item.duration_ms ? formatDurationMs(item.duration_ms) : "--:--";
       return `
-        <div class="group flex items-center justify-between p-2.5 rounded-xl hover:bg-hv transition-all border border-transparent hover:border-line">
+        <div class="group flex items-center justify-between p-2.5 rounded-xl hover:bg-hv transition-colors border border-transparent hover:border-line">
           <div class="flex items-center space-x-3 truncate">
             <span class="w-6 text-center text-xs text-fg4 font-mono">${idx + 1}</span>
             <div class="w-10 h-10 rounded-lg overflow-hidden bg-s3 shrink-0 border border-white/5 relative">
               <img src="${escapeHtml(item.thumbnail_url || '')}" class="w-full h-full object-cover" data-on-error="this_f2cb27" />
             </div>
             <div class="truncate">
-              <div class="text-xs font-bold text-fg group-hover:text-spotify-green transition-colors truncate flex items-center space-x-1.5">
+              <div class="text-xs font-semibold text-fg group-hover:text-spotify-green transition-colors truncate flex items-center space-x-1.5">
                 <span>${escapeHtml(item.title)}</span>
                 ${item.is_alternative ? '<span class="px-1.5 py-0.2 rounded text-2xs bg-purple-900/30 text-purple-300 border border-purple-800/40">ALT</span>' : ''}
               </div>
@@ -149,13 +149,13 @@ function renderUnifiedSearchResults(data) {
 function getProviderBadgeHtml(provider) {
   const p = (provider || "spotify").toLowerCase();
   if (p === "spotify") {
-    return `<span class="badge-provider-spotify px-2 py-0.5 rounded-md text-2xs font-bold uppercase tracking-wider flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-spotify-green mr-1"></span>Spotify</span>`;
+    return `<span class="badge-provider-spotify px-2 py-0.5 rounded-md text-2xs font-semibold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-spotify-green mr-1"></span>Spotify</span>`;
   } else if (p === "ytmusic") {
-    return `<span class="badge-provider-ytmusic px-2 py-0.5 rounded-md text-2xs font-bold uppercase tracking-wider flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-red-500 mr-1"></span>YT Music</span>`;
+    return `<span class="badge-provider-ytmusic px-2 py-0.5 rounded-md text-2xs font-semibold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-red-500 mr-1"></span>YT Music</span>`;
   } else if (p === "youtube") {
-    return `<span class="badge-provider-youtube px-2 py-0.5 rounded-md text-2xs font-bold uppercase tracking-wider flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-red-600 mr-1"></span>YouTube</span>`;
+    return `<span class="badge-provider-youtube px-2 py-0.5 rounded-md text-2xs font-semibold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-red-600 mr-1"></span>YouTube</span>`;
   }
-  return `<span class="badge-provider-local px-2 py-0.5 rounded-md text-2xs font-bold uppercase tracking-wider flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-1"></span>Local</span>`;
+  return `<span class="badge-provider-local px-2 py-0.5 rounded-md text-2xs font-semibold flex items-center"><span class="w-1.5 h-1.5 rounded-full bg-purple-400 mr-1"></span>Local</span>`;
 }
 
 function renderItemActionButtons(item) {
@@ -164,7 +164,7 @@ function renderItemActionButtons(item) {
 
   if (item.capabilities && item.capabilities.can_embed) {
     btns += `
-      <button data-on-click="openYouTubePlayerModal_bfbb03" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Watch / Listen In-Page" class="p-1.5 rounded-lg bg-s3 hover:bg-red-900/40 text-red-400 hover:text-white transition-all">
+      <button data-on-click="openYouTubePlayerModal_bfbb03" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Watch / Listen In-Page" class="p-1.5 rounded-lg bg-s3 hover:bg-red-900/40 text-red-400 hover:text-white transition-colors">
         <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
       </button>
     `;
@@ -172,7 +172,7 @@ function renderItemActionButtons(item) {
 
   if (item.capabilities && item.capabilities.can_download) {
     btns += `
-      <button data-on-click="enqueueUnifiedItem_19995d" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Add to Download Queue" class="p-1.5 rounded-lg bg-s3 hover:bg-spotify-green hover:text-black text-fg2 transition-all">
+      <button data-on-click="enqueueUnifiedItem_19995d" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Add to Download Queue" class="p-1.5 rounded-lg bg-s3 hover:bg-spotify-green hover:text-black text-fg2 transition-colors">
         <i data-lucide="download" class="w-3.5 h-3.5"></i>
       </button>
     `;
@@ -180,7 +180,7 @@ function renderItemActionButtons(item) {
 
   // Cross-source alternative action (Rule B / D)
   btns += `
-    <button data-on-click="openAlternativesModal_8254e2" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Find cross-source alternatives" class="p-1.5 rounded-lg bg-s3 hover:bg-purple-900/40 text-purple-300 hover:text-white transition-all">
+    <button data-on-click="openAlternativesModal_8254e2" data-args-click="${escapeHtml(JSON.stringify([itemJson]))}" title="Find cross-source alternatives" class="p-1.5 rounded-lg bg-s3 hover:bg-purple-900/40 text-purple-300 hover:text-white transition-colors">
       <i data-lucide="shuffle" class="w-3.5 h-3.5"></i>
     </button>
   `;
@@ -314,7 +314,7 @@ function renderCandidateCards(candidates) {
           </div>
           <div class="truncate">
             <div class="flex items-center space-x-2">
-              <span class="text-sm font-bold text-fg truncate">${escapeHtml(item.title)}</span>
+              <span class="text-sm font-semibold text-fg truncate">${escapeHtml(item.title)}</span>
               ${getProviderBadgeHtml(item.provider)}
             </div>
             <div class="text-xs text-fg3 truncate flex items-center space-x-2 pt-0.5">
@@ -329,13 +329,13 @@ function renderCandidateCards(candidates) {
           </div>
         </div>
         <div class="flex items-center space-x-3 shrink-0 self-end md:self-center">
-          <div class="px-2.5 py-1 rounded-full text-xs font-mono font-bold ${pillClass}">
+          <div class="px-2.5 py-1 rounded-full text-xs font-mono font-semibold ${pillClass}">
             ${scorePct}% Match
           </div>
-          <button data-on-click="selectAlternativeCandidate_09f876" data-args-click="${escapeHtml(JSON.stringify([candJson]))}" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs shadow-md transition-all flex items-center">
+          <button data-on-click="selectAlternativeCandidate_09f876" data-args-click="${escapeHtml(JSON.stringify([candJson]))}" class="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition-colors flex items-center">
             <i data-lucide="check" class="w-3.5 h-3.5 mr-1.5 stroke-[3]"></i> Choose
           </button>
-          <button data-on-click="downloadAlternativeCandidate_a1" data-args-click="${escapeHtml(JSON.stringify([candJson]))}" title="Download this match instead of the Spotify audio" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs shadow-md transition-all flex items-center">
+          <button data-on-click="downloadAlternativeCandidate_a1" data-args-click="${escapeHtml(JSON.stringify([candJson]))}" title="Download this match instead of the Spotify audio" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs transition-colors flex items-center">
             <i data-lucide="download" class="w-3.5 h-3.5 mr-1.5 stroke-[3]"></i> Download this
           </button>
         </div>

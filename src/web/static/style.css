@@ -192,7 +192,7 @@ input[type="range"].audio-scrubber::-webkit-slider-thumb:hover { transform: scal
 /* Skip link: visible only when focused by keyboard */
 .skip-link {
   position: absolute; left: -9999px; top: 8px; z-index: 10000; padding: 8px 14px; border-radius: 8px;
-  background: #1DB954; color: #000; font-weight: 700;
+  background: #1DB954; color: #000; font-weight: 600;
 }
 .skip-link:focus { left: 8px; }
 
@@ -251,3 +251,52 @@ input[type="range"].audio-scrubber::-webkit-slider-thumb:hover { transform: scal
 
 /* Preferences search */
 [data-search-hidden] { display: none !important; }
+
+
+/* ==========================================================================
+   Interface details (switches, toast timer, wizard steps, page entrance)
+   One easing curve, short durations, only colour/opacity/transform. No decoration.
+   ========================================================================== */
+:root { --ease: cubic-bezier(.2, 0, 0, 1); }
+
+/* Settings switches */
+#settings-form input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none; flex-shrink: 0; position: relative; width: 2.25rem; height: 1.25rem; border-radius: 9999px;
+  background: rgb(var(--s4)); border: 1px solid rgb(var(--line2)); cursor: pointer; transition: background-color .15s var(--ease), border-color .15s var(--ease);
+}
+#settings-form input[type="checkbox"]::after {
+  content: ""; position: absolute; top: 2px; left: 2px; width: calc(1.25rem - 6px); height: calc(1.25rem - 6px); border-radius: 50%;
+  background: rgb(var(--fg)); transition: transform .15s var(--ease);
+}
+#settings-form input[type="checkbox"]:checked { background: #1DB954; border-color: #1DB954; }
+#settings-form input[type="checkbox"]:checked::after { transform: translateX(1rem); background: #0a0a0a; }
+#settings-form input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Toast countdown: shows how long a message stays (pauses on hover) */
+.toast-item { position: relative; overflow: hidden; }
+.toast-bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 100%; background: currentColor; opacity: .4; transform-origin: left; animation: toast-countdown linear forwards; }
+.toast-item:hover .toast-bar { animation-play-state: paused; }
+@keyframes toast-countdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* Command palette: the selected row is a surface step with a hairline, not a tint */
+#cmdk-panel { box-shadow: 0 24px 64px -24px rgb(0 0 0 / .6); }
+#cmdk-list [role="option"][aria-selected="true"] { background: rgb(var(--hv)); box-shadow: inset 2px 0 0 #1DB954; }
+#cmdk-list [role="option"][aria-selected="true"] .cmdk-kbd { opacity: 1; }
+.cmdk-kbd { opacity: 0; }
+
+/* First-run steps */
+.wiz-dot { width: .5rem; height: .5rem; border-radius: 9999px; background: rgb(var(--s4)); transition: width .2s var(--ease), background-color .2s var(--ease); }
+.wiz-dot[aria-current="step"] { width: 1.5rem; background: #1DB954; }
+.wiz-dot.is-done { background: rgb(var(--fg4)); }
+
+/* One short entrance when a section opens: fade and rise a few pixels */
+@keyframes enter { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.tab-content:not(.hidden), [data-wizard-step] { animation: enter .18s var(--ease); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tab-content:not(.hidden), [data-wizard-step], .toast-bar { animation: none !important; }
+}
+
+/* Type: two working weights (400, 500) and 600 for emphasis; figures line up in columns */
+b, strong, th { font-weight: 600; }
+.font-mono, [id^="q-"], [id^="dash-"], [id^="intel-"] { font-variant-numeric: tabular-nums; }

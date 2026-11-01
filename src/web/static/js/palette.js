@@ -32,9 +32,6 @@ const Palette = (function () {
       { group: "Actions", label: "Open downloads folder", icon: "folder-open", keys: "open folder explorer downloads", run: () => openDownloadsFolder() },
       { group: "Actions", label: "Play / pause", icon: "play-circle", keys: "play pause music audio", run: () => toggleAudioPlayback() },
       { group: "Settings", label: "Switch theme (dark / light / system)", icon: "sun-moon", keys: "theme dark light appearance", run: () => cycleTheme() },
-      { group: "Settings", label: "Visual effects: Full", icon: "sparkles", keys: "effects animation full", run: () => setFxChoice("full") },
-      { group: "Settings", label: "Visual effects: Subtle", icon: "sparkle", keys: "effects animation subtle", run: () => setFxChoice("subtle") },
-      { group: "Settings", label: "Visual effects: Off", icon: "ban", keys: "effects animation off reduce motion", run: () => setFxChoice("off") },
       { group: "Settings", label: a.authenticated ? "Spotify account / sign out" : "Sign in to Spotify", icon: "key", keys: "sign in login logout account spotify", run: () => openLoginModal() },
       { group: "Help", label: "Keyboard shortcuts", icon: "keyboard", keys: "help shortcuts keys", run: () => UI.showShortcuts() }
     ];
@@ -111,7 +108,7 @@ const Palette = (function () {
   function render() {
     let html = "", lastGroup = null;
     shown.forEach((it, idx) => {
-      if (it.group !== lastGroup) { html += `<li role="presentation" class="px-4 pt-2 pb-1 text-2xs font-bold uppercase tracking-wider text-fg4">${escapeHtml(it.group)}</li>`; lastGroup = it.group; }
+      if (it.group !== lastGroup) { html += `<li role="presentation" class="px-4 pt-2 pb-1 text-2xs font-semibold text-fg4">${escapeHtml(it.group)}</li>`; lastGroup = it.group; }
       html += `
         <li id="cmdk-opt-${idx}" role="option" data-idx="${idx}" aria-selected="${idx === active}" class="flex items-center gap-3 mx-2 px-3 py-2 rounded-lg cursor-pointer text-xs text-fg2">
           <i data-lucide="${it.icon || "music"}" aria-hidden="true" class="w-4 h-4 text-fg3 shrink-0"></i>

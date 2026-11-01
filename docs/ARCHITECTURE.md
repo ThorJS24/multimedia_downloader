@@ -117,8 +117,7 @@ against a throwaway data directory created by `tests/_hermetic.py`, never your r
 
 Five sidebar destinations (Home, Downloads, Library, Automation, Settings); the sections inside each are tabs
 (`HUBS` in `static/js/core.js`). Shared services live in `ui.js` (toasts, confirm/prompt dialogs, modal focus
-management, fetch wrapper, keyboard/screen-reader enhancer); `fx.js` + `fx.css` are the optional visual-effects
-layer (Full / Subtle / Off; Windows "reduce motion" forces Off); `palette.js` is the Ctrl+K command palette;
+management, fetch wrapper, keyboard/screen-reader enhancer); `palette.js` is the Ctrl+K command palette;
 `rules.js` is the Rules & hooks screen. Colours are semantic tokens in `style.css` (dark, light, follow-Windows).
 
 Live logs use Server-Sent Events: the server sends *named* `log` events (plus keep-alive comments) and the UI

@@ -458,71 +458,6 @@ class TestBrowserUX(unittest.TestCase):
         page.keyboard.press("/")
         self.assertEqual(page.evaluate("document.activeElement.id"), "global-search-input")
 
-    def test_effect_modes_apply_persist_and_switch_features_off(self):
-        page = self.open_page()
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "subtle")             # calm by default
-        page.evaluate("() => { setFxChoice('full'); }")
-        self.assertTrue(page.evaluate("document.body.classList.contains('fx-full')"))
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('canvas.fx-net')).display"), "block")
-        page.evaluate("() => { setFxChoice('off'); }")
-        self.assertEqual(page.evaluate("getComputedStyle(document.getElementById('fx-aurora')).display"), "none")
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('canvas.fx-net')).display"), "none")
-        page.reload(wait_until="networkidle")
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "off")                # remembered
-        go_tab(page, "settings")
-        self.assertTrue(page.is_checked("input[name=fx][value=off]"))
-        page.check("input[name=fx][value=subtle]")
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "subtle")
-
-    def test_windows_reduce_motion_overrides_the_chosen_effect_mode(self):
-        ctx = self.browser.new_context(reduced_motion="reduce")
-        ctx.add_init_script("try{localStorage.setItem('studio.fx','\"full\"')}catch(e){}")
-        page = ctx.new_page()
-        page.goto(f"http://127.0.0.1:{self.port}/?token={SESSION_AUTH_TOKEN}", wait_until="networkidle")
-        self.addCleanup(ctx.close)
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "off")
-        self.assertEqual(page.evaluate("getComputedStyle(document.getElementById('fx-aurora')).display"), "none")
-        page.evaluate("document.getElementById('wizard-modal') && document.getElementById('wizard-modal').classList.add('hidden')")
-        go_tab(page, "settings")
-        self.assertTrue(page.is_visible("#fx-reduced-hint"))
-
-    def test_number_ticker_always_lands_on_the_exact_value(self):
-        page = self.open_page()
-        page.evaluate("() => { setFxChoice('full'); }")
-        page.evaluate("() => { const e = document.getElementById('dash-completed'); e.dataset.value = '0'; e.textContent = '0'; FX.tick(e, 250, 300); }")
-        page.wait_for_function("() => document.getElementById('dash-completed').textContent === '250'")
-        page.evaluate("() => { setFxChoice('off'); const e = document.getElementById('dash-completed'); FX.tick(e, 7); }")
-        self.assertEqual(page.inner_text("#dash-completed"), "7")                            # instant when effects are off
-
-    def test_cover_art_colour_drives_the_accent_and_resets(self):
-        page = self.open_page()
-        accent = page.evaluate("""async () => {
-            const c = document.createElement('canvas'); c.width = c.height = 8;
-            const g = c.getContext('2d'); g.fillStyle = '#d8203a'; g.fillRect(0, 0, 8, 8);
-            await FX.coverAccent(c.toDataURL());
-            return document.documentElement.style.getPropertyValue('--np');
-        }""")
-        r, gch, b = [int(x) for x in accent.split()]
-        self.assertTrue(r > 150 and r > gch + 60 and r > b + 40, accent)                      # a vivid red, not the default green
-        page.evaluate("() => { FX.resetAccent(); }")
-        self.assertEqual(page.evaluate("document.documentElement.style.getPropertyValue('--np')"), "")
-
-    def test_spotlight_follows_the_pointer_on_cards(self):
-        page = self.open_page()
-        box = page.locator("#tab-dashboard .fx-card").first.bounding_box()
-        page.mouse.move(box["x"] + 40, box["y"] + 30)
-        page.mouse.move(box["x"] + 60, box["y"] + 35)
-        page.wait_for_function("() => { const c = document.querySelector('#tab-dashboard .fx-card'); return c.style.getPropertyValue('--mx') !== ''; }")
-        self.assertRegex(page.evaluate("document.querySelector('#tab-dashboard .fx-card').style.getPropertyValue('--mx')"), r"^[\d.]+px$")
-
-    def test_decorations_do_not_leak_into_the_accessibility_tree_or_layout(self):
-        page = self.open_page()
-        self.assertEqual(page.get_attribute("#fx-aurora", "aria-hidden"), "true")
-        self.assertEqual(page.get_attribute("canvas.fx-net", "aria-hidden"), "true")
-        # the screen-reader-only label of the Home box must stay hidden (regression: a style rule un-hid it)
-        box = page.locator("label[for=home-quick-input]").bounding_box()
-        self.assertTrue(box is None or (box["width"] <= 2 and box["height"] <= 2), box)
-
     def test_wizard_stepper_moves_forward_and_back_with_progress(self):
         page = self.open_page()
         page.evaluate("() => { openWizardModal(); }")
@@ -731,6 +666,32 @@ class TestBrowserUX(unittest.TestCase):
         with page.expect_request(lambda r: "sort_dir=desc" in r.url):
             page.click("th[data-lib-sort=title]")
         self.assertEqual(page.get_attribute("th[data-lib-sort=title]", "aria-sort"), "descending")
+
+    def test_the_interface_stays_quiet_no_decoration_no_loops_no_heavy_type(self):
+        """The visual layer is restrained: no ambient background, no gradients or looping motion on idle screens,
+        nothing heavier than weight 600, and no shouting in capitals (short codes such as MP3 are fine)."""
+        page = self.open_page()
+        self.assertEqual(page.locator("#fx-aurora, canvas").count(), 0)
+        audit = """() => {
+          const out = {heavy: [], looping: [], gradient: [], shouting: []};
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (!r.width || !r.height || el.closest('.hidden,[hidden]')) continue;
+            const cs = getComputedStyle(el), tag = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+            if (el.childNodes.length && Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()) && parseInt(cs.fontWeight) > 600) out.heavy.push(tag + '.' + el.className.toString().slice(0, 50));
+            if (cs.animationName !== 'none' && cs.animationIterationCount.includes('infinite') && !el.closest('.skeleton,.animate-spin,svg')) out.looping.push(tag);
+            if (cs.backgroundImage.includes('gradient') && !el.classList.contains('skeleton')) out.gradient.push(tag);
+            const own = Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join(' ');
+            if (cs.textTransform === 'uppercase' && own.length > 4) out.shouting.push(tag + ':' + own.slice(0, 20));
+          }
+          return out;
+        }"""
+        for tab in ("dashboard", "library", "settings", "plugins"):
+            go_tab(page, tab)
+            page.wait_for_timeout(400)
+            found = page.evaluate(audit)
+            self.assertEqual(found, {"heavy": [], "looping": [], "gradient": [], "shouting": []}, f"{tab}: {found}")
+        self.assertEqual(self.real_errors(), [])
 
     def test_toast_errors_persist_and_can_be_copied(self):
         page = self.open_page()

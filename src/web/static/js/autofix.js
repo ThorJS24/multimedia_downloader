@@ -47,7 +47,7 @@ async function autofixRefresh() {
   const pct = st.total ? Math.round((st.done / st.total) * 100) : 0;
   status.innerHTML = `
     <div class="flex items-center justify-between text-xs text-fg2"><span role="status">${st.running ? "Looking up tracks…" : (st.cancelled ? "Stopped." : "Finished.")} ${st.done} of ${st.total} checked · ${st.items.length} with suggestions</span><span class="font-mono">${pct}%</span></div>
-    <div class="h-1.5 rounded-full bg-s3 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Lookup progress"><div class="h-full bg-spotify-green transition-all" style="width:${pct}%"></div></div>
+    <div class="h-1.5 rounded-full bg-s3 overflow-hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Lookup progress"><div class="h-full bg-spotify-green transition-colors" style="width:${pct}%"></div></div>
     ${st.error ? `<p role="alert" class="text-xs text-red-400">${escapeHtml(st.error)}</p>` : ""}
     ${!st.running ? `<p class="text-2xs text-fg3">${escapeHtml(autofixSummaryText(st))}</p>` : ""}`;
   if (!st.running) {
@@ -80,7 +80,7 @@ function renderAutofixResults() {
       <div class="flex items-center gap-2">
         <button type="button" data-on-click="autofixSelect" data-args-click='["gaps"]' class="px-3 py-1.5 rounded-lg bg-s3 hover:bg-s4 border border-line2 text-2xs font-semibold text-fg2">Only fill gaps</button>
         <button type="button" data-on-click="autofixSelect" data-args-click='["none"]' class="px-3 py-1.5 rounded-lg bg-s3 hover:bg-s4 border border-line2 text-2xs font-semibold text-fg2">Select none</button>
-        <button type="button" id="btn-autofix-apply" data-on-click="autofixApply" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed">Apply…</button>
+        <button type="button" id="btn-autofix-apply" data-on-click="autofixApply" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs disabled:opacity-40 disabled:cursor-not-allowed">Apply…</button>
       </div>
     </div>
     <ul class="space-y-2 max-h-[28rem] overflow-auto pr-1">${autofixItems.map((it) => `

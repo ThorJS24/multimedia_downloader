@@ -374,7 +374,7 @@ function logLineEl(data) {
   line.className = `log-line log-${String(data.level).replace(/[^A-Za-z]/g, "")} flex space-x-2 text-xs select-text`;
   line.innerHTML = `
     <span class="text-fg4 font-mono shrink-0">[${escapeHtml(data.timestamp)}]</span>
-    <span class="text-xs uppercase font-bold shrink-0 w-16 ${getLevelColor(data.level)}">${escapeHtml(data.level)}</span>
+    <span class="text-xs uppercase font-semibold shrink-0 w-16 ${getLevelColor(data.level)}">${escapeHtml(data.level)}</span>
     <span class="text-fg2 break-all">${escapeHtml(data.message)}</span>`;
   return line;
 }
@@ -545,7 +545,7 @@ async function checkInitialReadiness() {
 }
 
 const WIZARD_STEPS = [
-  { title: "Welcome to Spotify Downloader Studio", sub: "First, a quick check that everything this app needs is in place." },
+  { title: "Set up Spotify Downloader Studio", sub: "First, a quick check that everything this app needs is in place." },
   { title: "How downloading works", sub: "A few things worth knowing before you start." },
   { title: "Choose a home for your music", sub: "Last step: pick where finished downloads are saved." }
 ];

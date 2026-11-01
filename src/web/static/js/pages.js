@@ -15,25 +15,25 @@ function formatDuration(sec) { return UI.fmtDuration(sec); }
 // ---------- builders
 function coverImg(path, fallbackIcon, fallbackCls, rounded = "rounded-xl") {
   return `
-    <div class="relative w-full aspect-square ${rounded} overflow-hidden bg-s3 mb-3 shadow-md">
+    <div class="relative w-full aspect-square ${rounded} overflow-hidden bg-s3 mb-3">
       <img src="${coverUrl(path)}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" data-on-error="this_49d186" />
       <div class="w-full h-full hidden items-center justify-center ${fallbackCls}"><i data-lucide="${fallbackIcon}" aria-hidden="true" class="w-8 h-8"></i></div>
     </div>`;
 }
 
 const hoverPlay = `
-  <span aria-hidden="true" class="absolute right-2 bottom-2 w-10 h-10 rounded-full bg-spotify-green text-black shadow-xl flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 translate-y-2 group-hover:translate-y-0 transition-all duration-200">
+  <span aria-hidden="true" class="absolute right-2 bottom-2 w-10 h-10 rounded-full bg-spotify-green text-black flex items-center justify-center opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 translate-y-2 group-hover:translate-y-0 transition-colors duration-200">
     <i data-lucide="play" class="w-5 h-5 fill-black ml-0.5"></i>
   </span>`;
 
 function mediaCard({ handler, args, label, cover, title, subtitle, footLeft, footRight, round = false }) {
   const art = cover || "";
   return `
-    <div class="fx-card group p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-line2 transition-all flex flex-col justify-between cursor-pointer ${round ? "items-center text-center" : ""}"
+    <div class="group p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-line2 transition-colors flex flex-col justify-between cursor-pointer ${round ? "items-center text-center" : ""}"
          data-on-click="${handler}" data-args-click="${jsonAttr(args)}" aria-label="${escapeHtml(label)}">
       <div class="${round ? "w-full flex flex-col items-center" : ""}">
         ${art}
-        <div class="font-bold text-fg text-xs truncate ${round ? "w-full" : ""}" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
+        <div class="font-semibold text-fg text-xs truncate ${round ? "w-full" : ""}" title="${escapeHtml(title)}">${escapeHtml(title)}</div>
         <div class="text-2xs text-fg3 truncate mt-0.5 ${round ? "w-full" : ""}" title="${escapeHtml(subtitle || "")}">${escapeHtml(subtitle || "")}</div>
       </div>
       ${footLeft !== undefined ? `<div class="mt-2 pt-2 border-t border-line w-full flex items-center justify-between text-2xs text-fg4 font-mono"><span class="truncate max-w-[60%]">${footLeft}</span><span>${footRight || ""}</span></div>` : ""}
@@ -43,7 +43,7 @@ function mediaCard({ handler, args, label, cover, title, subtitle, footLeft, foo
 const trackCard = (t, footLeft) => mediaCard({
   handler: "playLocalTrack_15214c", args: [enc(t.path), enc(t.title), enc(t.artist), enc(t.album)],
   label: `Play ${t.title} by ${t.artist}`,
-  cover: `<div class="relative w-full aspect-square rounded-xl overflow-hidden bg-s3 mb-3 shadow-md">
+  cover: `<div class="relative w-full aspect-square rounded-xl overflow-hidden bg-s3 mb-3">
       <img src="${coverUrl(t.path)}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" data-on-error="this_49d186" />
       <div class="w-full h-full hidden items-center justify-center text-fg4 bg-s3"><i data-lucide="music" aria-hidden="true" class="w-8 h-8"></i></div>${hoverPlay}</div>`,
   title: t.title, subtitle: t.artist, footLeft, footRight: formatDuration(t.duration_sec)
@@ -55,12 +55,12 @@ function trackRowHtml(t, { index, artist = false, album = false, showCover = fal
     <tr class="hover:bg-hv transition-colors group cursor-pointer" data-on-click="playLocalTrack_15214c" data-args-click="${playArgs}">
       <td class="py-3 px-4 w-12 text-center text-fg4 font-mono text-xs group-hover:text-spotify-green">
         <span class="group-hover:hidden">${index}</span>
-        <i data-lucide="play" aria-hidden="true" class="w-3.5 h-3.5 mx-auto hidden group-hover:inline fill-spotify-green text-spotify-green"></i>
+        <i data-lucide="play" aria-hidden="true" class="w-3.5 h-3.5 mx-auto hidden group-hover:inline fill-spotify-green text-fg3"></i>
       </td>
       <td class="py-3 px-4">
         <div class="flex items-center space-x-3">
           ${showCover ? `<div class="w-9 h-9 rounded-lg overflow-hidden bg-s3 shrink-0"><img src="${coverUrl(t.path)}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" data-on-error="this_49d186" /><div class="w-full h-full hidden items-center justify-center text-fg4"><i data-lucide="music" aria-hidden="true" class="w-4 h-4"></i></div></div>` : ""}
-          <div class="font-bold text-fg text-xs truncate max-w-md">${escapeHtml(t.title)}</div>
+          <div class="font-semibold text-fg text-xs truncate max-w-md">${escapeHtml(t.title)}</div>
         </div>
       </td>
       ${artist ? `<td class="py-3 px-4 text-fg3 text-xs truncate max-w-xs"><button type="button" class="hover:underline hover:text-fg" data-on-click="openArtistView_302f1a" data-args-click="${jsonAttr([enc(t.artist)])}">${escapeHtml(t.artist)}</button></td>` : ""}
@@ -78,7 +78,7 @@ const SHELVES = [
   { key: "recently_added", id: "added", build: (t) => trackCard(t, escapeHtml(t.album)) },
   { key: "top_artists", id: "artists", build: (a) => mediaCard({
       handler: "openArtistView_53ee7d", args: [enc(a.artist)], label: `Open artist ${a.artist}`, round: true,
-      cover: `<div class="relative w-28 h-28 rounded-full overflow-hidden bg-s3 mb-3 shadow-xl border border-line"><img src="${coverUrl(a.sample_path)}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" data-on-error="this_49d186" /><div class="w-full h-full hidden items-center justify-center text-blue-400 bg-s3"><i data-lucide="mic" aria-hidden="true" class="w-10 h-10"></i></div></div>`,
+      cover: `<div class="relative w-28 h-28 rounded-full overflow-hidden bg-s3 mb-3 border border-line"><img src="${coverUrl(a.sample_path)}" alt="" loading="lazy" decoding="async" class="w-full h-full object-cover" data-on-error="this_49d186" /><div class="w-full h-full hidden items-center justify-center text-blue-400 bg-s3"><i data-lucide="mic" aria-hidden="true" class="w-10 h-10"></i></div></div>`,
       title: a.artist, subtitle: `Artist • ${a.track_count} ${a.track_count === 1 ? "song" : "songs"}` }) },
   { key: "top_albums", id: "albums", build: (al) => mediaCard({
       handler: "openAlbumView_810177", args: [enc(al.album), enc(al.artist)], label: `Open album ${al.album} by ${al.artist}`,

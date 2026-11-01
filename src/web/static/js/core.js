@@ -22,6 +22,12 @@ const HUBS = {
   settings: { label: "Settings", tabs: [["settings", "Preferences"], ["logs", "Diagnostics"]] }
 };
 
+// Plain count: the number is set, not animated.
+function setCount(id, value) {
+  const el = document.getElementById(id);
+  if (el && el.textContent !== String(value)) el.textContent = String(value);
+}
+
 const TAB_TITLES = {
   dashboard: "Overview",
   fetch: "Add music",
@@ -353,8 +359,8 @@ async function fetchStatus() {
     const meter = document.getElementById("disk-meter");
     if (meter) meter.setAttribute("aria-valuenow", String(percent));
 
-    FX.setNumber("dash-completed", data.completed_count || 0);
-    FX.setNumber("dash-library", data.library_count || 0);
+    setCount("dash-completed", data.completed_count || 0);
+    setCount("dash-library", data.library_count || 0);
     window.__libraryCount = data.library_count || 0;
 
     window.__auth = { authenticated: !!data.authenticated, accountType: data.account_type || "unknown", username: data.username || "", credentialsExist: !!data.credentials_exist };

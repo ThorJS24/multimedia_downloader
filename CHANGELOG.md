@@ -19,9 +19,7 @@
 - **Queue**: drag a waiting row to change the download order (the up/down buttons remain as the keyboard path; dragging is off while a filter or sort hides the true order). New `move_job` queue operation.
 - **Library**: column chooser (Year, Genre and Time are now available, sortable server-side) and saved views (filter + search + sort + columns), both remembered on this computer.
 
-- **Visual layer ("Aurora Studio")**, inspired by Magic UI, React Bits, Aceternity, Uiverse and Vanta-style backgrounds, implemented as original vanilla CSS/JS (no React, no CDN, works offline under the strict CSP): drifting aurora background, pointer-following spotlight cards, a travelling border beam and a particle network on the Home add-box, shimmer CTAs, animated gradient headings, blur-fade section entrances, number tickers, an equalizer on the player cover, animated switches, toast countdown bars, skeleton loaders and a floating empty-state icon. The accent colour follows the album art of the playing track.
-- **Visual effects setting** (Settings -> Appearance): Full / Subtle (default) / Off. Windows "reduce motion" always forces Off; animations pause while the window is hidden.
-- **Command palette** (Ctrl+K): jump to any section, run actions (add music, scan, pause queue, theme, effects, sign in...) or search and play a track. `/` focuses the search box.
+- **Command palette** (Ctrl+K): jump to any section, run actions (add music, scan, pause queue, theme, sign in...) or search and play a track. `/` focuses the search box.
 - **First-run wizard** is now a 3-step flow with a progress indicator.
 
 ### Added (audit follow-up)
@@ -42,6 +40,16 @@
 - **Support bundle** (Settings -> Diagnostics): one zip with the report, sanitised settings, plugin status, recent failures and logs, scrubbed of secrets, web-address tokens and your Windows user name; plus *Copy summary* for a bug report.
 - **Release pipeline**: pushing a version tag builds, tests (including running the built exe), signs when a certificate is configured, and publishes a GitHub Release with `updates.json`, the feed the app's update check reads. `tools/smoke_packaged.py` runs a built (or source) copy of the app and checks it over HTTP. `main.py web --headless --url-file` writes the startup address (inside the data folder only) so such checks can authenticate.
 - HTTP logging now shows only the host of an address, since webhook addresses are credentials.
+
+### Visual cleanup ("unslop")
+A design pass over the whole interface to remove the usual signs of generated UI, following the [unslop](https://github.com/heydamir/unslop) method by Damir Sokolovsky (CC BY 4.0). The features and the order of sections are unchanged.
+- **Removed the decorative effects layer**: drifting aurora background, pointer spotlight on cards, travelling border beam, shimmering buttons, gradient headings, particle network, floating icon, player glow and the equalizer overlay (`fx.js`, `fx.css`, and the Visual effects setting that controlled them).
+- **Colour**: no gradients on surfaces (artist, album and playlist headers are plain raised surfaces), no coloured icons or rainbow stat numbers; the green accent is kept for primary actions and meaning.
+- **Type**: weights 400-600 only (no 700-900), sentence case instead of tracked capitals, tabular figures for counts and sizes; unused font files removed.
+- **Icons and copy**: no sparkle or flame icons, no emoji in staging labels, no greeting headline or exclamation marks.
+- **Motion**: `transition-all`, pulsing placeholders and hover scaling removed; one easing curve, one short fade when a section opens.
+- **Details**: one radius family for cards, fewer shadows (depth from surface steps), a quiet play button on library rows.
+- A browser test now guards this: no ambient layers, gradients, looping motion, heavy weights or shouting capitals on the main screens.
 
 ### Fixed (features)
 - The schedule's day boxes could revert the box you just clicked; the boxes are now the source of truth while you click.

@@ -165,7 +165,7 @@ function renderRulesPreview() {
   const body = document.getElementById("rules-preview-body");
   const apply = document.getElementById("btn-rules-apply");
   if (!p) { summary.classList.add("hidden"); apply.disabled = true; return; }
-  const cell = (label, n, cls) => `<div class="p-3 rounded-xl bg-s2 border border-line ${cls || ""}"><div class="text-2xs text-fg3">${label}</div><div class="text-lg font-bold font-mono">${n}</div></div>`;
+  const cell = (label, n, cls) => `<div class="p-3 rounded-xl bg-s2 border border-line ${cls || ""}"><div class="text-2xs text-fg3">${label}</div><div class="text-lg font-semibold font-mono">${n}</div></div>`;
   summary.classList.remove("hidden");
   summary.innerHTML = cell("Files checked", p.total_evaluated) + cell("Would move", p.will_move, "text-spotify-green") + cell("Already in place", p.unchanged) + cell("Name clashes", p.collisions, p.collisions ? "text-amber-400" : "");
   const moves = (p.planned_actions || []).filter((a) => a.will_move);

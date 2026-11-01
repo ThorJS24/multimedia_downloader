@@ -379,7 +379,6 @@ function paintTrackInfo(meta) {
   set("queue-now-artist", meta.artist);
 
   const coverUrl = `/api/library/cover?path=${encodeURIComponent(meta.path)}`;
-  FX.coverAccent(coverUrl);       // tint glows/spotlights with the album colour
   [["player-cover-art", "player-placeholder-icon"], ["drawer-cover-art", "drawer-placeholder-icon"]].forEach(([imgId, phId]) => {
     const img = document.getElementById(imgId), ph = document.getElementById(phId);
     if (img) { img.src = coverUrl; img.classList.remove("hidden"); }

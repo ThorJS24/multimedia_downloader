@@ -16,13 +16,13 @@ async function fetchWatcherStatus() {
     if (pill) {
       pill.innerText = data.status || "STOPPED";
       if (data.status === "RUNNING") {
-        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
       } else if (data.status === "PAUSED") {
-        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30";
       } else if (data.status === "ERROR") {
-        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-red-500/20 text-red-400 border border-red-500/30";
+        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-semibold bg-red-500/20 text-red-400 border border-red-500/30";
       } else {
-        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-bold bg-s3 text-fg3 border border-line2";
+        pill.className = "px-2.5 py-0.5 rounded-full text-2xs font-mono font-semibold bg-s3 text-fg3 border border-line2";
       }
     }
 
@@ -120,8 +120,8 @@ async function loadWatchedFolders() {
       const isEnabled = f.is_enabled;
       const scanDate = f.last_scanned_at ? new Date(f.last_scanned_at * 1000).toLocaleTimeString() : "Never";
       const statusBadge = f.status === "ACTIVE"
-        ? `<span class="px-2 py-0.5 rounded-full text-2xs font-bold bg-emerald-500/20 text-emerald-400">ACTIVE</span>`
-        : `<span class="px-2 py-0.5 rounded-full text-2xs font-bold bg-red-500/20 text-red-400" title="${escapeHtml(f.error_message || '')}">ERROR</span>`;
+        ? `<span class="px-2 py-0.5 rounded-full text-2xs font-semibold bg-emerald-500/20 text-emerald-400">ACTIVE</span>`
+        : `<span class="px-2 py-0.5 rounded-full text-2xs font-semibold bg-red-500/20 text-red-400" title="${escapeHtml(f.error_message || '')}">ERROR</span>`;
 
       return `
         <tr class="hover:bg-hv transition-colors">
@@ -280,24 +280,24 @@ async function loadWatcherPendingIntake() {
     }
 
     tbody.innerHTML = items.map(it => {
-      let reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold bg-emerald-500/20 text-emerald-400">NEW FILE</span>`;
+      let reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-emerald-500/20 text-emerald-400">NEW FILE</span>`;
       if (it.detection_reason === "MODIFIED_LOCAL_FILE") {
-        reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold bg-cyan-500/20 text-cyan-300">MODIFIED</span>`;
+        reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-cyan-500/20 text-cyan-300">MODIFIED</span>`;
       } else if (it.detection_reason === "REMOVED_LOCAL_FILE") {
-        reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold bg-amber-500/20 text-amber-300">REMOVED</span>`;
+        reasonBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-amber-500/20 text-amber-300">REMOVED</span>`;
       }
 
       let collisionBadge = `<span class="px-2 py-0.5 rounded text-2xs font-mono bg-s3 text-fg2">${escapeHtml(it.collision_status)}</span>`;
       if (it.collision_status === "DUPLICATE_CONTENT_EXISTS") {
-        collisionBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold bg-purple-500/20 text-purple-300">DUPLICATE HASH</span>`;
+        collisionBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-purple-500/20 text-purple-300">DUPLICATE HASH</span>`;
       } else if (it.collision_status === "MODIFIED_IN_PLACE") {
-        collisionBadge = `<span class="px-2 py-0.5 rounded text-2xs font-bold bg-cyan-500/20 text-cyan-300">UPDATED FILE</span>`;
+        collisionBadge = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-cyan-500/20 text-cyan-300">UPDATED FILE</span>`;
       }
 
       return `
         <tr class="hover:bg-hv transition-colors">
           <td class="py-3 px-4">
-            <div class="font-bold text-fg truncate max-w-xs">${escapeHtml(it.title)}</div>
+            <div class="font-semibold text-fg truncate max-w-xs">${escapeHtml(it.title)}</div>
             <div class="text-2xs text-fg4 font-mono truncate max-w-xs" title="${escapeHtml(it.target_path)}">${escapeHtml(it.target_path.split(/[\\/]/).pop())}</div>
           </td>
           <td class="py-3 px-4 text-fg2 truncate max-w-[140px]">${escapeHtml(it.artists)}</td>
@@ -306,7 +306,7 @@ async function loadWatcherPendingIntake() {
           <td class="py-3 px-4">${collisionBadge}</td>
           <td class="py-3 px-4 text-right">
             <div class="flex items-center justify-end space-x-1.5">
-              <button data-on-click="approveWatcherItem_bb7542" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(it.id)]))}" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-2xs transition-colors">
+              <button data-on-click="approveWatcherItem_bb7542" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(it.id)]))}" class="px-2.5 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-2xs transition-colors">
                 Approve
               </button>
               <button data-on-click="dismissWatcherItem_2f3b9a" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(it.id)]))}" class="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-fg3 hover:text-red-400 text-2xs border border-line2 transition-colors">
