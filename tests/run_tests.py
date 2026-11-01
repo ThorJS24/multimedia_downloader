@@ -11,7 +11,7 @@ import unittest
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
-SLOW_PREFIXES = ("test_browser_", "test_mcp_protocol_audit")
+SLOW_PREFIXES = ("test_browser_", "test_mcp_protocol_audit", "test_smoke_")
 
 
 def iter_suite(suite):

@@ -1,0 +1,114 @@
+name: Release
+
+# Push a tag such as v2.1.0 (it must match src/version.py) and this builds the Windows installer and portable zip,
+# checks the built app by running it, and publishes a GitHub Release with the update feed that the app's
+# "Check for updates" reads. Run it by hand (Actions -> Release -> Run workflow) to build and test without publishing.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write          # needed to create the release
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build, check and publish
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      FFMPEG_ZIP_URL: https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip
+      # Secrets cannot be tested directly in a step's `if`, so the check is made here.
+      HAS_CERT: ${{ secrets.STUDIO_SIGN_PFX_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements-dev.txt
+
+      - name: Download FFmpeg and FFprobe (checked against the published SHA-256)
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force bin, "$env:RUNNER_TEMP\ffmpeg" | Out-Null
+          Invoke-WebRequest $env:FFMPEG_ZIP_URL -OutFile "$env:RUNNER_TEMP\ffmpeg.zip"
+          $raw = (Invoke-WebRequest "$env:FFMPEG_ZIP_URL.sha256").Content
+          if ($raw -is [byte[]]) { $raw = [Text.Encoding]::ASCII.GetString($raw) }
+          $expected = $raw.ToString().Trim().Split()[0].ToLower()
+          $actual = (Get-FileHash "$env:RUNNER_TEMP\ffmpeg.zip" -Algorithm SHA256).Hash.ToLower()
+          if ($expected -ne $actual) { throw "FFmpeg download does not match its published SHA-256 ($actual vs $expected)" }
+          Expand-Archive "$env:RUNNER_TEMP\ffmpeg.zip" "$env:RUNNER_TEMP\ffmpeg"
+          Copy-Item "$env:RUNNER_TEMP\ffmpeg\*\bin\ffmpeg.exe", "$env:RUNNER_TEMP\ffmpeg\*\bin\ffprobe.exe" bin\
+          bin\ffmpeg.exe -version | Select-Object -First 1
+
+      - name: Install Inno Setup (builds the installer)
+        run: choco install innosetup --no-progress -y
+
+      - name: Lint, types and unit tests
+        run: |
+          python -m ruff check .
+          python -m mypy
+          python tests/run_tests.py --fast
+
+      - name: Code-signing certificate (optional)
+        # Add the repository secrets STUDIO_SIGN_PFX_BASE64 (the .pfx, base64-encoded) and STUDIO_SIGN_PASSWORD to sign
+        # the exe and installer. Without them the build still works and is simply unsigned.
+        if: env.HAS_CERT == 'true'
+        env:
+          PFX_BASE64: ${{ secrets.STUDIO_SIGN_PFX_BASE64 }}
+          PFX_PASSWORD: ${{ secrets.STUDIO_SIGN_PASSWORD }}
+        shell: pwsh
+        run: |
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\signing.pfx", [Convert]::FromBase64String($env:PFX_BASE64))
+          "STUDIO_SIGN_PFX=$env:RUNNER_TEMP\signing.pfx" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+          "STUDIO_SIGN_PASSWORD=$env:PFX_PASSWORD" | Out-File -Append -Encoding utf8 $env:GITHUB_ENV
+
+      - name: Build (PyInstaller, portable zip, installer)
+        run: python build_windows.py
+
+      - name: Run the built app and check it works
+        run: python tools/smoke_packaged.py --exe dist/SpotifyDownloader/SpotifyDownloader.exe
+
+      - name: Write the update feed
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          $installer = Get-ChildItem dist -Filter "*-Setup.exe" | Select-Object -First 1
+          python tools/make_update_feed.py --installer $installer.FullName --tag $env:TAG --repo $env:REPO --out dist/updates.json
+          Get-Content dist/updates.json
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-build
+          path: |
+            dist/*-Setup.exe
+            dist/*.zip
+            dist/checksums.txt
+            dist/updates.json
+          if-no-files-found: warn
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Spotify Downloader Studio ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*-Setup.exe
+            dist/*.zip
+            dist/checksums.txt
+            dist/updates.json

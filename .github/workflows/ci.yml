@@ -1,0 +1,63 @@
+name: CI
+
+# Lint, type-check and test every push and pull request. The app is Windows-only (WinForms/WebView2 shell,
+# Windows paths in the tests), so everything runs on a Windows runner.
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: Lint, types and unit tests
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install FFmpeg
+        run: choco install ffmpeg --no-progress -y
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Ruff
+        run: python -m ruff check .
+      - name: Mypy
+        run: python -m mypy
+      - name: Unit and API tests (no browser)
+        run: python tests/run_tests.py --fast
+
+  browser:
+    name: Browser tests
+    runs-on: windows-latest
+    timeout-minutes: 40
+    needs: checks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install FFmpeg
+        run: choco install ffmpeg --no-progress -y
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Install the browser the tests drive
+        # The tests look for it under .cache/ms-playwright (see tests/_hermetic.py).
+        run: |
+          $env:PLAYWRIGHT_BROWSERS_PATH = "$PWD\.cache\ms-playwright"
+          python -m playwright install chromium
+      - name: Full suite
+        run: python tests/run_tests.py

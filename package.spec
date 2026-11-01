@@ -13,6 +13,7 @@ datas = [
 # config_loader looks first. Bundling them in _internal as well shipped two ~100 MB copies.
 
 hidden_imports = [
+    'waitress',
     'webview',
     'webview.platforms.winforms',
     'webview.platforms.edgechromium',

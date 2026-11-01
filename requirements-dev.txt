@@ -4,3 +4,4 @@ playwright>=1.63,<1.64   # must match the browser build in .cache/ms-playwright 
 ruff>=0.5
 mypy>=1.10
 setuptools>=70   # PyInstaller needs it; venvs on Python 3.12+ no longer ship it
+PyYAML>=6          # tests read the GitHub workflow files
