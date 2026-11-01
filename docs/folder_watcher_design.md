@@ -147,7 +147,7 @@ The folder watcher integrates with `SecurityManager` (`src/security.py`) and Win
 1. **Root Directory Rejection**: Folders evaluating to `C:\`, `D:\`, `/`, or bare drive roots are strictly rejected to prevent recursive enumeration of entire volumes.
 2. **System Directory Block**: Prohibits watching `C:\Windows`, `C:\Program Files`, `%TEMP%`, or sensitive system folders.
 3. **Path Canonicalization**: Resolves symlinks, `..` traversal tokens, and Windows drive letter cases before persistence in SQLite.
-4. **Containment Guarantee**: All internal logs, database records, and temporary files remain strictly inside `D:\mini-projects\Spotify_playlist_downloader`. Zero writes to `C:`.
+4. **Containment Guarantee**: All internal logs, database records, and temporary files remain strictly inside the application folder. Zero writes to the system drive.
 
 ---
 

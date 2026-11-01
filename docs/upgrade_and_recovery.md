@@ -14,7 +14,7 @@ The application strictly decouples binaries from user data:
 
 ### In-Place Upgrade Procedure
 1. Close any running instances of Spotify Downloader Studio.
-2. Run the new installer (`SpotifyDownloader-v2.0.0-Setup.exe`).
+2. Run the new installer (`SpotifyDownloader-v2.1.0-Setup.exe`).
 3. The installer overwrites existing application binaries in place.
 4. **Guarantees:**
    - No database reset or recreation.
