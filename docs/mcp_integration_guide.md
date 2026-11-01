@@ -22,15 +22,15 @@ The built-in MCP server exposes live read and query capabilities directly to you
 ## 2. Configuration for ChatGPT & Claude Desktop
 
 ### ChatGPT Desktop / Custom Agents Configuration
-Add the following to your MCP client configuration (e.g. `mcp_config.json` or your MCP client's settings):
+Add the following to your MCP client configuration (e.g. `mcp_config.json` or your MCP client's settings). **Change both paths to where this app lives on your computer**. A ready-to-edit copy is in `mcp_config.example.json`; the ones below are examples:
 
 ```json
 {
   "mcpServers": {
     "spotify-downloader-studio": {
-      "command": "d:\\mini-projects\\Spotify_playlist_downloader\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\Spotify_playlist_downloader\\.venv\\Scripts\\python.exe",
       "args": [
-        "d:\\mini-projects\\Spotify_playlist_downloader\\main.py",
+        "C:\\path\\to\\Spotify_playlist_downloader\\main.py",
         "mcp"
       ],
       "env": {
