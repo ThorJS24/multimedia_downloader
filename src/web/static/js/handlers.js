@@ -357,12 +357,44 @@ H["handleUnifiedSearchInput_3e0fdd"] = function (event, __a) {
     handleUnifiedSearchInput(this.value);
 };
 
-H["loadExactDuplicates_8ea43f"] = function (event, __a) {
-    loadExactDuplicates();
+H["autofixStart"] = function (event, __a) {
+    autofixStart();
 };
 
-H["loadProbableDuplicates_5f5318"] = function (event, __a) {
-    loadProbableDuplicates();
+H["autofixCancel"] = function (event, __a) {
+    autofixCancel();
+};
+
+H["autofixCount"] = function (event, __a) {
+    autofixCount();
+};
+
+H["autofixSelect"] = function (event, __a) {
+    autofixSelect(__a[0]);
+};
+
+H["autofixApply"] = function (event, __a) {
+    autofixApply();
+};
+
+H["dedupPlan"] = function (event, __a) {
+    dedupPlan();
+};
+
+H["dedupToggle"] = function (event, __a) {
+    dedupToggle();
+};
+
+H["dedupApply"] = function (event, __a) {
+    dedupApply();
+};
+
+H["dedupUndo"] = function (event, __a) {
+    dedupUndo();
+};
+
+H["rescanDuplicates"] = function (event, __a) {
+    switchDuplicateTab(currentDupTab);
 };
 
 H["moveDuplicateToBackup_114185"] = function (event, __a) {
@@ -980,6 +1012,66 @@ H["toggleLoginPassword"] = function (event, __a) {
     toggleLoginPassword(this);
 };
 
+H["loadPluginsAgain"] = function (event, __a) {
+    loadPlugins();
+};
+
+H["pluginsOpenSetting"] = function (event, __a) {
+    pluginsOpenSetting(__a[0]);
+};
+
+H["pluginsToggleBuiltin"] = function (event, __a) {
+    pluginsToggleBuiltin(__a[0], event);
+};
+
+H["pluginsBrowse"] = function (event, __a) {
+    browseForFolder(__a[0]);
+};
+
+H["pluginsSave"] = function (event, __a) {
+    pluginsSave(__a[0], __a[1]);
+};
+
+H["pluginsTest"] = function (event, __a) {
+    pluginsTest(__a[0]);
+};
+
+H["pluginsRemove"] = function (event, __a) {
+    pluginsRemove(__a[0], __a[1]);
+};
+
+H["pluginsPickFile"] = function (event, __a) {
+    pluginsPickFile();
+};
+
+H["pluginsImportFile"] = function (event, __a) {
+    pluginsImportFile(event);
+};
+
+H["copyDiagnosticsSummary"] = function (event, __a) {
+    copyDiagnosticsSummary();
+};
+
+H["createSupportBundle"] = function (event, __a) {
+    createSupportBundle();
+};
+
+H["useReleaseFeed"] = function (event, __a) {
+    useReleaseFeed();
+};
+
+H["scheduleDaysChanged"] = function (event, __a) {
+    scheduleDaysChanged();
+};
+
+H["queueScheduleOverride"] = function (event, __a) {
+    queueScheduleOverride(__a[0]);
+};
+
+H["filterSettings"] = function (event, __a) {
+    filterSettings(event);
+};
+
 H["jumpToSetting"] = function (event, __a) {
     jumpToSetting(event, this);
 };
@@ -1002,6 +1094,50 @@ H["applyDownloadsDir"] = function (event, __a) {
 
 H["createBackupNow"] = function (event, __a) {
     createBackupNow();
+};
+
+H["historySearchInput"] = function (event, __a) {
+    historySearchInput();
+};
+
+H["historyStatusChanged"] = function (event, __a) {
+    historyStatusChanged();
+};
+
+H["historyMore"] = function (event, __a) {
+    loadHistory(false);
+};
+
+H["historyReload"] = function (event, __a) {
+    loadHistory(true);
+};
+
+H["historyRedownload"] = function (event, __a) {
+    historyRedownload(__a[0]);
+};
+
+H["historyShow"] = function (event, __a) {
+    historyShow(__a[0]);
+};
+
+H["loadBackups"] = function (event, __a) {
+    loadBackups();
+};
+
+H["restoreBackup"] = function (event, __a) {
+    restoreBackup(__a[0]);
+};
+
+H["cancelRestore"] = function (event, __a) {
+    cancelRestore();
+};
+
+H["dismissRestoreResult"] = function (event, __a) {
+    dismissRestoreResult();
+};
+
+H["openBackupsFolder"] = function (event, __a) {
+    openBackupsFolder();
 };
 
 H["pickSettingsImport"] = function (event, __a) {
@@ -1070,6 +1206,66 @@ H["wizardBack"] = function (event, __a) {
 
 H["browseWizardFolder"] = function (event, __a) {
     browseForFolder('wizard-downloads-path');
+};
+
+H["rulesNew"] = function (event, __a) {
+    rulesNew();
+};
+
+H["rulesCancel"] = function (event, __a) {
+    rulesCancel();
+};
+
+H["rulesSave"] = function (event, __a) {
+    rulesSave(event);
+};
+
+H["rulesConditionChanged"] = function (event, __a) {
+    rulesConditionChanged();
+};
+
+H["rulesActionChanged"] = function (event, __a) {
+    rulesActionChanged();
+};
+
+H["rulesToggleFromInput"] = function (event, __a) {
+    rulesToggle(__a[0], this.checked);
+};
+
+H["rulesEditFromButton"] = function (event, __a) {
+    rulesEdit(__a[0]);
+};
+
+H["rulesDeleteFromButton"] = function (event, __a) {
+    rulesDelete(__a[0]);
+};
+
+H["rulesPreview"] = function (event, __a) {
+    rulesPreview();
+};
+
+H["rulesApply"] = function (event, __a) {
+    rulesApply();
+};
+
+H["rulesUndoFromButton"] = function (event, __a) {
+    rulesUndoBatch(__a[0]);
+};
+
+H["hooksSave"] = function (event, __a) {
+    hooksSave(event);
+};
+
+H["hooksActionChanged"] = function (event, __a) {
+    hooksActionChanged();
+};
+
+H["hooksDeleteFromButton"] = function (event, __a) {
+    hooksDelete(__a[0]);
+};
+
+H["archiveFilter"] = function (event, __a) {
+    renderArchive();
 };
 
 })();

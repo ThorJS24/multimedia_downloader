@@ -12,13 +12,13 @@ let playerCurrentIndex = -1;
 // Five destinations in the sidebar; the sections inside each live in a sub-navigation strip.
 const HUBS = {
   home: { label: "Home", tabs: [["dashboard", "Overview"]] },
-  downloads: { label: "Downloads", tabs: [["fetch", "Add music"], ["queue", "Queue"], ["matching", "Match lab"]] },
+  downloads: { label: "Downloads", tabs: [["fetch", "Add music"], ["queue", "Queue"], ["history", "History"], ["matching", "Match lab"]] },
   library: {
     label: "Library",
     tabs: [["library", "Tracks"], ["search", "Discover"], ["intelligence", "Health"], ["quality_lab", "Quality"], ["comparator", "Releases"], ["optimizer", "Cleanup"]],
     detail: ["album-detail", "artist-detail", "playlist-detail"]
   },
-  automation: { label: "Automation", tabs: [["sync", "Playlist sync"], ["monitor", "Artist monitor"], ["watcher", "Folder watcher"]] },
+  automation: { label: "Automation", tabs: [["sync", "Playlist sync"], ["monitor", "Artist monitor"], ["watcher", "Folder watcher"], ["rules", "Rules & hooks"], ["plugins", "Plugins"]] },
   settings: { label: "Settings", tabs: [["settings", "Preferences"], ["logs", "Diagnostics"]] }
 };
 
@@ -26,6 +26,8 @@ const TAB_TITLES = {
   dashboard: "Overview",
   fetch: "Add music",
   queue: "Download queue",
+  history: "Download history",
+  plugins: "Plugins & extensions",
   matching: "Match lab",
   sync: "Playlist sync",
   library: "Library",
@@ -34,6 +36,7 @@ const TAB_TITLES = {
   comparator: "Release comparison",
   monitor: "Artist monitor",
   watcher: "Folder watcher",
+  rules: "Rules & hooks",
   optimizer: "Cleanup & duplicates",
   logs: "Diagnostics",
   settings: "Preferences",
@@ -183,9 +186,12 @@ function switchTab(tabId, pushHistory = true, focusHeading = false) {
   if (tabId === "comparator") fetchRepairQueue();
   if (tabId === "monitor") loadMonitors();
   if (tabId === "watcher") loadWatcherDashboard();
-  if (tabId === "optimizer") refreshHashDuplicates();
-  if (tabId === "settings") { loadSettings(); loadStorageHealth(); }
-  if (tabId === "queue") { applyQueueFiltersAndRender(); fetchQueue(); }
+  if (tabId === "rules") loadRulesTab();
+  if (tabId === "history") loadHistory(true);
+  if (tabId === "plugins") loadPlugins();
+  if (tabId === "optimizer") { refreshHashDuplicates(); refreshDedupUndo(); }
+  if (tabId === "settings") { loadSettings(); loadStorageHealth(); loadBackups(); }
+  if (tabId === "queue") { applyQueueFiltersAndRender(); renderQueueAlerts(); fetchQueue(); }
   UI.icons();
 }
 
@@ -375,6 +381,7 @@ function renderAuthPill() {
   txt.className = cls;
   txt.innerText = label;
 
+  if (typeof renderQueueAlerts === "function") renderQueueAlerts();
   const settingsStatus = document.getElementById("settings-account-status");
   if (settingsStatus) settingsStatus.textContent = a.authenticated ? (a.accountType === "premium" ? "Premium" : a.accountType === "free" ? "Free" : "Connected") : "Signed out";
   const inBtn = document.getElementById("btn-settings-signin");

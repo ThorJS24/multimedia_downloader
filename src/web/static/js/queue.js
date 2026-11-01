@@ -20,12 +20,91 @@ const artistText = (j) => (Array.isArray(j.artists) ? j.artists.join(", ") : (j.
 const collectionOf = (j) => j.collection_name || j.album || "Singles";
 const jsonAttr = (v) => escapeHtml(JSON.stringify(v));
 
+// Turn raw failure text into something a person can act on. The raw text is always kept in the details dialog.
+const ERROR_HINTS = [
+  { test: /stream retrieval is unsupported|not authenticated|no stored credential|login required/i, key: "signin",
+    short: "Not signed in to Spotify", title: "You need to sign in", help: "Downloading Spotify tracks uses your own Spotify Premium account. Sign in once and the session is remembered on this computer.", action: "signin", actionLabel: "Sign in to Spotify" },
+  { test: /premium|audio key|restricted|\b403\b/i, key: "premium",
+    short: "Needs Spotify Premium", title: "Spotify only allows downloads on Premium", help: "Free accounts can browse and look up tracks, but Spotify's servers refuse the audio keys. Sign in with a Premium account (a secondary account or family-plan slot is safest).", action: "signin", actionLabel: "Use a different account" },
+  { test: /\b429\b|too many requests|rate.?limit/i, key: "rate",
+    short: "Spotify asked us to slow down", title: "Too many requests", help: "The app retries automatically with longer waits. To avoid this, raise the pause between tracks or lower the parallel downloads.", action: "settings", actionLabel: "Open speed settings" },
+  { test: /verification failure|integrity|checksum/i, key: "verify",
+    short: "The file didn't pass its check", title: "The downloaded file looked damaged", help: "It was discarded so you don't end up with a broken file. Retrying usually fixes it.", action: "retry", actionLabel: "Retry this track" },
+  { test: /ffmpeg|transcod|encoder/i, key: "ffmpeg",
+    short: "Converting the audio failed", title: "FFmpeg couldn't convert the file", help: "Check that FFmpeg is found (Settings → Storage) and that the output format is supported.", action: "settings", actionLabel: "Check FFmpeg" },
+  { test: /failed to load stream|key server|unavailable in your/i, key: "stream",
+    short: "Spotify wouldn't provide the audio", title: "The stream couldn't be loaded", help: "The track may be unavailable in your region or temporarily blocked. Try again later, or look for an alternative source for this track.", action: "retry", actionLabel: "Retry this track" },
+  { test: /timed out|timeout|connection|getaddrinfo|network|unreachable/i, key: "network",
+    short: "Network problem", title: "Couldn't reach the internet", help: "Check your connection. Failed tracks can be retried in one click once you're back online.", action: "retry", actionLabel: "Retry this track" }
+];
+
+function explainError(text) {
+  const t = String(text || "");
+  return ERROR_HINTS.find((h) => h.test.test(t)) || null;
+}
+
+function runErrorAction(action, jobId) {
+  if (action === "signin") openLoginModal();
+  else if (action === "settings") { switchTab("settings"); setTimeout(() => document.getElementById("set-performance")?.scrollIntoView({ block: "start" }), 120); }
+  else if (action === "retry" && jobId) retryJob(jobId);
+}
+
+// A single banner above the queue when the failures share one fixable cause (usually: sign in / Premium).
+function renderQueueAlerts() {
+  const box = document.getElementById("queue-alert");
+  if (!box) return;
+  const failed = cachedQueueJobs.filter((j) => j.status === "FAILED");
+  const auth = window.__auth || {};
+  const authFailures = failed.filter((j) => { const h = explainError(j.error); return h && (h.key === "signin" || h.key === "premium"); });
+  if (!authFailures.length || (auth.authenticated && auth.accountType === "premium")) { box.classList.add("hidden"); box.innerHTML = ""; return; }
+  const free = auth.authenticated && auth.accountType === "free";
+  box.classList.remove("hidden");
+  box.innerHTML = `
+    <div role="alert" class="flex flex-wrap items-center gap-3 p-4 rounded-2xl bg-amber-950/30 border border-amber-800/50 text-amber-200">
+      <i data-lucide="key" aria-hidden="true" class="w-5 h-5 text-amber-400 shrink-0"></i>
+      <div class="flex-1 min-w-[14rem] text-xs">
+        <div class="font-bold text-amber-100">${authFailures.length} download${authFailures.length === 1 ? "" : "s"} can't start: ${free ? "this is a Free Spotify account" : "you're not signed in with Premium"}</div>
+        <div class="text-amber-200/80">Spotify only lets Premium accounts download. ${free ? "Sign in with a Premium account," : "Sign in,"} then retry the failed items.</div>
+      </div>
+      <button type="button" data-on-click="openLoginModal_b5b7e1" class="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs">${free ? "Use a different account" : "Sign in"}</button>
+      <button type="button" data-on-click="retryAllFailedJobs_b485ca" class="px-3 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-fg2 font-semibold text-xs">Retry all failed</button>
+    </div>`;
+  UI.icons(box);
+}
+
 // Poll quickly while the queue is on screen or work is running; slowly otherwise; barely at all when hidden.
 function startQueuePolling() {
   UI.poll(fetchQueue, {
     visibleMs: () => (currentTab === "queue" || lastQueueCounts.active > 0 ? 1200 : 4000),
     hiddenMs: 15000
   });
+}
+
+// Tells you why nothing is starting when the download schedule is holding the queue, and lets you override it.
+function renderScheduleNote(schedule, counts) {
+  const box = document.getElementById("queue-schedule-note");
+  if (!box) return;
+  const waiting = schedule && schedule.enabled && !schedule.override && !schedule.allowed_now;
+  const overridden = schedule && schedule.enabled && schedule.override;
+  if (!waiting && !overridden) {
+    if (!box.classList.contains("hidden")) { box.classList.add("hidden"); box.innerHTML = ""; }
+    return;
+  }
+  const queued = (counts && counts.queued) || 0;
+  box.className = "p-4 rounded-2xl border border-amber-500/40 bg-amber-500/10 flex flex-wrap items-center justify-between gap-3";
+  box.innerHTML = waiting
+    ? `<span class="text-xs text-amber-100"><strong>Downloads are waiting for the schedule.</strong> ${queued ? `${queued} track${queued === 1 ? " is" : "s are"} queued and will start ` : "New tracks will start "}${schedule.next_start_text ? `${escapeHtml(schedule.next_start_text)}` : "when the window opens"} (${escapeHtml(schedule.window)}).</span>
+       <button type="button" data-on-click="queueScheduleOverride" data-args-click='[true]' class="px-3.5 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs">Download now anyway</button>`
+    : `<span class="text-xs text-amber-100"><strong>The schedule is switched off for now</strong> (until you restart the app).</span>
+       <button type="button" data-on-click="queueScheduleOverride" data-args-click='[false]' class="px-3.5 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg">Follow the schedule again</button>`;
+}
+
+async function queueScheduleOverride(on) {
+  try {
+    await UI.api("/api/queue/schedule-override", { body: { on: !!on }, prefix: "Couldn't change the schedule" });
+  } catch (_) { return; }
+  queueEtag = "";
+  fetchQueue();
 }
 
 async function fetchQueue() {
@@ -55,6 +134,7 @@ async function fetchQueue() {
   refreshQueueBadges();
 
   isQueuePaused = data.is_paused;
+  renderScheduleNote(data.schedule, c);
   const pBtn = document.getElementById("text-q-pause");
   const pIco = document.getElementById("icon-q-pause");
   if (pBtn && pIco) {
@@ -88,7 +168,7 @@ async function fetchQueue() {
     if (!cachedQueueJobs.some((j) => j.id === sid)) selectedQueueJobIds.delete(sid);
   }
 
-  if (currentTab === "queue") applyQueueFiltersAndRender();
+  if (currentTab === "queue") { applyQueueFiltersAndRender(); renderQueueAlerts(); }
   if (currentTab === "dashboard") renderDashboardQueue(cachedQueueJobs);
 }
 
@@ -128,7 +208,7 @@ function renderDashboardQueue(jobs) {
     <li class="flex items-center justify-between gap-3 text-xs">
       <div class="min-w-0">
         <div class="font-semibold text-fg truncate">${escapeHtml(j.title)} <span class="text-fg3 font-normal">· ${escapeHtml(artistText(j))}</span></div>
-        <div class="text-red-400 truncate" title="${escapeHtml(j.error || "")}">${escapeHtml(j.error || "Failed")}</div>
+        <div class="text-red-400 truncate" title="${escapeHtml(j.error || "")}">${escapeHtml((explainError(j.error) || {}).short || j.error || "Failed")}</div>
       </div>
       <div class="flex items-center gap-1.5 shrink-0">
         <button type="button" data-on-click="openQueueJobDetailsModal_507735" data-args-click="${jsonAttr([j.id])}" class="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-fg2 border border-line2">Details</button>
@@ -293,8 +373,9 @@ function queueRowHtml(job, idx, isSelected) {
   const cover = job.cover_url
     ? `<img src="${escapeHtml(job.cover_url)}" loading="lazy" decoding="async" alt="" width="32" height="32" class="w-8 h-8 rounded-lg object-cover shrink-0 border border-line2" data-on-error="this_4b0b04" />`
     : `<div class="w-8 h-8 rounded-lg bg-s3 flex items-center justify-center shrink-0 text-fg4"><i data-lucide="music" aria-hidden="true" class="w-4 h-4"></i></div>`;
+  const hint = job.error ? explainError(job.error) : null;
   const err = job.error
-    ? `<div role="button" tabindex="0" data-on-click="openQueueJobDetailsModal_507735" data-args-click="${id}" class="text-2xs text-red-400 mt-1 truncate max-w-[220px] hover:underline cursor-pointer flex items-center" title="${escapeHtml(job.error)}"><i data-lucide="alert-circle" aria-hidden="true" class="w-3 h-3 mr-1 shrink-0"></i>${escapeHtml(job.error)}</div>`
+    ? `<div role="button" tabindex="0" data-on-click="openQueueJobDetailsModal_507735" data-args-click="${id}" class="text-2xs text-red-400 mt-1 truncate max-w-[220px] hover:underline cursor-pointer flex items-center" title="${escapeHtml(job.error)}"><i data-lucide="alert-circle" aria-hidden="true" class="w-3 h-3 mr-1 shrink-0"></i>${escapeHtml(hint ? hint.short : job.error)}</div>`
     : "";
   const btn = (key, icon, label, cls = "text-fg3 hover:text-fg") =>
     `<button type="button" data-on-click="${key}" data-args-click="${id}" title="${label}" aria-label="${label}: ${escapeHtml(job.title)}" class="p-1.5 rounded-md ${cls}"><i data-lucide="${icon}" aria-hidden="true" class="w-3.5 h-3.5"></i></button>`;
@@ -758,6 +839,17 @@ function openQueueJobDetailsModal(jobId) {
   const errBox = document.getElementById("detail-job-error-box");
   document.getElementById("detail-job-error-text").innerText = job.error || "";
   errBox.classList.toggle("hidden", !job.error);
+  const hint = explainError(job.error);
+  const help = document.getElementById("detail-job-help");
+  help.classList.toggle("hidden", !hint);
+  const helpBtn = document.getElementById("detail-job-help-action");
+  if (hint) {
+    document.getElementById("detail-job-help-title").textContent = hint.title;
+    document.getElementById("detail-job-help-text").textContent = hint.help;
+    helpBtn.textContent = hint.actionLabel;
+    helpBtn.classList.remove("hidden");
+    helpBtn.onclick = () => { closeQueueJobDetailsModal(); runErrorAction(hint.action, job.id); };
+  }
   document.getElementById("btn-detail-retry").classList.toggle("hidden", !(job.status === "FAILED" || job.status === "CANCELLED"));
 
   document.getElementById("modal-queue-job-details").classList.remove("hidden");

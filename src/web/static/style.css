@@ -242,3 +242,12 @@ input[type="range"].audio-scrubber::-webkit-slider-thumb:hover { transform: scal
 /* Queue drag & drop insertion marker */
 #master-queue-body tr.drop-before > td { box-shadow: inset 0 2px 0 0 #1DB954; }
 #master-queue-body tr.drop-after > td { box-shadow: inset 0 -2px 0 0 #1DB954; }
+
+
+/* Library table: lower-priority columns step aside as the window narrows (title, artist, play and actions always stay). */
+@media (max-width: 1180px) { .lib-hide-lg { display: none; } }
+@media (max-width: 1000px) { .lib-hide-lg, .lib-hide-md { display: none; } }
+@media (max-width: 800px)  { .lib-hide-lg, .lib-hide-md, .lib-hide-sm { display: none; } }
+
+/* Preferences search */
+[data-search-hidden] { display: none !important; }

@@ -338,7 +338,7 @@ function fetchLinkDirectly(url) {
 async function cleanTempBuffers() {
   try {
     const res = await (await fetch("/api/optimizer/clean-temp", { method: "POST" })).json();
-    showToast(`Removed ${res.deleted_files} temporary file${res.deleted_files === 1 ? "" : "s"} (${res.reclaimed_mb} MB).`, "success");
+    showToast(`Removed ${res.deleted_files} temporary file${res.deleted_files === 1 ? "" : "s"} (${res.reclaimed_mb} MB).` + (res.failed_files ? `\n${res.failed_files} couldn't be deleted because they are in use. Close any running download and try again.` : ""), res.failed_files ? "warning" : "success");
     fetchStatus();
   } catch (err) {
     showToast("Cleanup error: " + err, "error");
@@ -817,4 +817,116 @@ async function rollbackBulkOrganizer(skipConfirm = false) {
     UI.toast(`Restored ${res.restored_count} file${res.restored_count === 1 ? "" : "s"} to their original locations.`, "success");
     refreshLibrary();
   } catch (_) { /* reported */ }
+}
+
+// ================= ONE-CLICK DUPLICATE CLEANUP =================
+let dedupPlanData = null;
+
+async function dedupPlan() {
+  const btn = document.getElementById("btn-dedup-plan");
+  const box = document.getElementById("dedup-plan");
+  await UI.busy(btn, "Looking…", async () => {
+    try {
+      dedupPlanData = await UI.api("/api/duplicates/resolve/plan", { prefix: "Couldn't check for duplicates" });
+    } catch (_) { return; }
+    renderDedupPlan();
+    box.classList.remove("hidden");
+  });
+}
+
+function renderDedupPlan() {
+  const box = document.getElementById("dedup-plan");
+  const plan = dedupPlanData;
+  if (!plan) return;
+  if (!plan.group_count) {
+    box.innerHTML = `<p class="text-xs text-emerald-400">✓ Nothing to clean up automatically.${plan.needs_review ? ` ${plan.needs_review} group${plan.needs_review === 1 ? "" : "s"} of similar songs need your own decision (use the lists below).` : ""}</p>`;
+    return;
+  }
+  const rows = plan.groups.map((g, i) => `
+    <li class="p-3 rounded-xl bg-s2 border border-line space-y-1.5">
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" class="dedup-group mt-1 accent-spotify-green" data-index="${i}" checked data-on-change="dedupToggle" />
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm font-semibold text-fg truncate">${escapeHtml(g.title)}${g.artist ? ` <span class="font-normal text-fg3">· ${escapeHtml(g.artist)}</span>` : ""}${g.needs_review ? ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 text-2xs font-semibold">another copy needs your review</span>` : ""}</span>
+          <span class="block text-xs text-emerald-300 truncate" title="${escapeHtml(g.keep.path)}">Keep: ${escapeHtml(g.keep.filename)} <span class="text-fg3">(${escapeHtml(g.keep.quality)})</span></span>
+          ${g.remove.map((r) => `<span class="block text-xs text-fg3 truncate" title="${escapeHtml(r.path)}">Move aside: ${escapeHtml(r.filename)} <span class="text-fg4">(${escapeHtml(r.quality)}) · ${escapeHtml(r.reason)}</span></span>`).join("")}
+        </span>
+      </label>
+    </li>`).join("");
+  document.getElementById("dedup-plan").innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p id="dedup-summary" class="text-xs text-fg2" role="status"></p>
+      <button type="button" id="btn-dedup-apply" data-on-click="dedupApply" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed"></button>
+    </div>
+    <ul class="space-y-2 max-h-96 overflow-auto pr-1">${rows}</ul>`;
+  dedupToggle();
+}
+
+function dedupSelectedPairs() {
+  const pairs = [];
+  document.querySelectorAll("#dedup-plan .dedup-group:checked").forEach((cb) => {
+    const g = dedupPlanData.groups[Number(cb.dataset.index)];
+    g.remove.forEach((r) => pairs.push({ keep: g.keep.path, remove: r.path, size: r.size_bytes }));
+  });
+  return pairs;
+}
+
+function dedupToggle() {
+  const pairs = dedupSelectedPairs();
+  const bytes = pairs.reduce((n, p) => n + (p.size || 0), 0);
+  const summary = document.getElementById("dedup-summary");
+  const apply = document.getElementById("btn-dedup-apply");
+  if (!summary || !apply) return;
+  const plan = dedupPlanData;
+  summary.textContent = `${pairs.length} of ${plan.file_count} file${plan.file_count === 1 ? "" : "s"} selected · ${UI.fmtBytes(bytes)} can be freed` + (plan.needs_review ? ` · ${plan.needs_review} group${plan.needs_review === 1 ? " is" : "s are"} not included because the copies differ in quality` : "");
+  apply.textContent = `Move ${pairs.length} file${pairs.length === 1 ? "" : "s"} aside…`;
+  apply.disabled = pairs.length === 0;
+}
+
+async function dedupApply() {
+  const pairs = dedupSelectedPairs();
+  if (!pairs.length) return;
+  const bytes = pairs.reduce((n, p) => n + (p.size || 0), 0);
+  const ok = await UI.confirm({
+    title: `Move ${pairs.length} duplicate${pairs.length === 1 ? "" : "s"} aside?`,
+    message: `The best copy of each song stays where it is. The other ${pairs.length} file${pairs.length === 1 ? "" : "s"} (${UI.fmtBytes(bytes)}) go to Downloads → _duplicates_backup. Nothing is deleted and you can undo this.`,
+    confirmText: "Move aside"
+  });
+  if (!ok) return;
+  try {
+    const res = await UI.api("/api/duplicates/resolve/apply", { body: { pairs: pairs.map(({ keep, remove }) => ({ keep, remove })) }, prefix: "Cleanup failed" });
+    const left = res.refused.length ? `\n${res.refused.length} file${res.refused.length === 1 ? " was" : "s were"} left alone: ${res.refused[0].reason}.` : "";
+    UI.toast(`Moved ${res.moved} duplicate${res.moved === 1 ? "" : "s"} aside (${UI.fmtBytes(res.reclaimed_bytes)}).${left}`, res.refused.length ? "warning" : "success", 12000,
+      res.batch_id ? { action: { label: "Undo", onClick: () => dedupUndo(res.batch_id) } } : undefined);
+  } catch (_) { return; }
+  dedupPlanData = null;
+  document.getElementById("dedup-plan").classList.add("hidden");
+  refreshDedupUndo();
+  refreshHashDuplicates();
+  if (typeof refreshLibrary === "function") refreshLibrary();
+}
+
+async function refreshDedupUndo() {
+  const btn = document.getElementById("btn-dedup-undo");
+  if (!btn) return;
+  try {
+    const { last } = await UI.api("/api/duplicates/resolve/last", { quiet: true });
+    btn.classList.toggle("hidden", !last);
+    if (last) {
+      btn.dataset.batch = last.batch_id;
+      btn.textContent = `Undo last cleanup (${last.files} file${last.files === 1 ? "" : "s"})`;
+    }
+  } catch (_) { /* the button simply stays as it was */ }
+}
+
+async function dedupUndo(batchId) {
+  const id = typeof batchId === "string" ? batchId : (document.getElementById("btn-dedup-undo") || {}).dataset?.batch;
+  if (!id) return;
+  try {
+    const res = await UI.api("/api/duplicates/resolve/undo", { body: { batch_id: id }, prefix: "Undo failed" });
+    UI.toast(`Restored ${res.restored} file${res.restored === 1 ? "" : "s"} to where they were.`, "success");
+  } catch (_) { return; }
+  refreshDedupUndo();
+  refreshHashDuplicates();
+  if (typeof refreshLibrary === "function") refreshLibrary();
 }

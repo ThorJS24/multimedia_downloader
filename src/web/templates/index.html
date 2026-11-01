@@ -7,6 +7,7 @@
   <title>Spotify Downloader Studio</title>
   <!-- Everything is served locally (rebuild with: python tools/build_frontend.py) -->
   <script src="/static/js/theme.js"></script>
+  <link rel="icon" href="/static/favicon.ico" sizes="any" />
   <link rel="stylesheet" href="/static/css/tailwind.css" />
   <link rel="stylesheet" href="/static/style.css" />
   <link rel="stylesheet" href="/static/fx.css" />
@@ -377,6 +378,8 @@
 
       <!-- ================= TAB 3: DOWNLOAD QUEUE ================= -->
       <section id="tab-queue" class="tab-content hidden space-y-5">
+        <div id="queue-alert" class="hidden"></div>
+        <div id="queue-schedule-note" class="hidden" role="status"></div>
         <!-- Top Statistics & Master Controls Bar -->
         <div class="flex flex-wrap items-center justify-between gap-4 bg-s1 p-4 rounded-2xl border border-line">
           <!-- Interactive Status Filter Badges -->
@@ -608,6 +611,35 @@
       </section>
 
       <!-- ================= TAB 4: MATCH REVIEW ================= -->
+      <!-- ================= DOWNLOAD HISTORY ================= -->
+      <section id="tab-history" class="tab-content hidden space-y-5" aria-label="Download history">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold">Download history</h2>
+            <p class="text-xs text-fg3 max-w-2xl">Everything the app has finished downloading, even after you clear the queue. Search it, jump to the file, or download a track again.</p>
+          </div>
+          <span id="history-count" class="text-2xs text-fg3 font-mono" role="status"></span>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="relative flex-1 min-w-[14rem] max-w-md">
+            <i aria-hidden="true" data-lucide="search" class="w-3.5 h-3.5 text-fg4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+            <input type="search" id="history-search" aria-label="Search the download history" data-on-input="historySearchInput" placeholder="Search title, artist, album or playlist…" autocomplete="off" class="w-full bg-s2 border border-line2 focus:border-spotify-green rounded-xl pl-8 pr-3 py-2 text-xs text-fg placeholder-fg4 focus:outline-none" />
+          </div>
+          <label for="history-status" class="sr-only">Show</label>
+          <select id="history-status" data-on-change="historyStatusChanged" class="bg-s2 border border-line2 rounded-xl px-3 py-2 text-xs text-fg">
+            <option value="">All finished</option>
+            <option value="COMPLETED">Done</option>
+            <option value="FAILED">Failed</option>
+            <option value="CANCELLED">Cancelled</option>
+            <option value="SKIPPED">Skipped</option>
+          </select>
+        </div>
+        <ul id="history-list" class="space-y-2" aria-live="polite"></ul>
+        <div class="text-center">
+          <button type="button" id="btn-history-more" data-on-click="historyMore" class="hidden px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg2">Show more</button>
+        </div>
+      </section>
+
       <section id="tab-matching" class="tab-content hidden space-y-6" aria-label="Match lab">
         <div>
           <h2 class="text-xl font-bold">Match lab</h2>
@@ -1153,6 +1185,12 @@
             <button data-on-click="exportDiagnostics_97813a" class="px-3 py-1.5 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs text-fg2">
               Export JSON
             </button>
+            <button type="button" data-on-click="copyDiagnosticsSummary" class="px-3 py-1.5 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs text-fg2">
+              Copy summary
+            </button>
+            <button type="button" data-on-click="createSupportBundle" class="px-3 py-1.5 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">
+              Create support bundle
+            </button>
             <button data-on-click="clearLogs_37ead7" class="px-3 py-1.5 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs text-fg2">
               Clear
             </button>
@@ -1175,7 +1213,13 @@
             <h2 class="text-xl font-bold">Preferences</h2>
             <p class="text-xs text-fg3">Changes apply when you save. Nothing here touches your existing files.</p>
           </div>
-          <button type="button" data-on-click="resetSettingsDefaults_69a04d" class="px-3.5 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs text-fg2 hover:text-fg">Restore defaults…</button>
+          <div class="flex items-center gap-2">
+            <div class="relative">
+              <i aria-hidden="true" data-lucide="search" class="w-3.5 h-3.5 text-fg4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+              <input type="search" id="settings-search" aria-label="Search preferences" data-on-input="filterSettings" placeholder="Search preferences…" autocomplete="off" class="w-56 bg-s2 border border-line2 focus:border-spotify-green rounded-xl pl-8 pr-3 py-2 text-xs text-fg placeholder-fg4 focus:outline-none" />
+            </div>
+            <button type="button" data-on-click="resetSettingsDefaults_69a04d" class="px-3.5 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs text-fg2 hover:text-fg">Restore defaults…</button>
+          </div>
         </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-[13rem_minmax(0,1fr)] gap-6">
@@ -1183,6 +1227,7 @@
             <a href="#set-audio" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Audio &amp; quality</a>
             <a href="#set-naming" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Files &amp; naming</a>
             <a href="#set-performance" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Speed &amp; safety</a>
+            <a href="#set-schedule" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Schedule &amp; notifications</a>
             <a href="#set-account" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Spotify account</a>
             <a href="#set-automation" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Automation</a>
             <a href="#set-storage" data-on-click="jumpToSetting" class="block px-3 py-2 rounded-lg text-fg3 hover:text-fg hover:bg-hv">Storage</a>
@@ -1191,6 +1236,7 @@
           </nav>
 
           <div class="space-y-5 min-w-0" id="settings-form">
+            <p id="settings-search-empty" role="status" class="hidden p-6 rounded-2xl bg-s1 border border-line text-xs text-fg3 text-center"></p>
 
             <!-- Audio -->
             <section id="set-audio" aria-labelledby="h-set-audio" class="p-6 rounded-2xl bg-s1 border border-line space-y-4">
@@ -1278,6 +1324,42 @@
               </div>
               <p id="cfg-delay-error" class="hidden text-xs text-red-400" role="alert">Minimum pause can't be longer than the maximum.</p>
               <label class="flex items-center space-x-2 text-xs text-fg2 cursor-pointer"><input type="checkbox" id="cfg-restore-queue" data-setting="general.restore_queue_on_startup" class="accent-spotify-green" /><span>Restore unfinished downloads when the app starts</span></label>
+            </section>
+
+            <!-- Schedule & notifications -->
+            <section id="set-schedule" aria-labelledby="h-set-schedule" class="p-6 rounded-2xl bg-s1 border border-line space-y-4">
+              <h3 id="h-set-schedule" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="calendar-clock" class="w-4 h-4 mr-2 text-spotify-green"></i> Schedule &amp; notifications</h3>
+              <div class="space-y-3">
+                <label class="flex items-center space-x-2 text-xs text-fg2 cursor-pointer"><input type="checkbox" id="cfg-schedule-enabled" data-setting="schedule.enabled" class="accent-spotify-green" /><span>Only start new downloads during these hours</span></label>
+                <div id="schedule-fields" class="space-y-3">
+                  <div class="grid grid-cols-2 gap-4 max-w-sm">
+                    <div><label for="cfg-schedule-start" class="text-xs font-semibold text-fg2">From</label>
+                      <input type="time" id="cfg-schedule-start" data-setting="schedule.start" class="mt-1 w-full bg-s2 border border-line2 rounded-xl px-3 py-2 text-xs text-fg" /></div>
+                    <div><label for="cfg-schedule-end" class="text-xs font-semibold text-fg2">Until</label>
+                      <input type="time" id="cfg-schedule-end" data-setting="schedule.end" class="mt-1 w-full bg-s2 border border-line2 rounded-xl px-3 py-2 text-xs text-fg" /></div>
+                  </div>
+                  <fieldset>
+                    <legend class="text-xs font-semibold text-fg2 mb-1">On these days</legend>
+                    <div class="flex flex-wrap gap-2">
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="mon" data-on-change="scheduleDaysChanged" /><span>Mon</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="tue" data-on-change="scheduleDaysChanged" /><span>Tue</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="wed" data-on-change="scheduleDaysChanged" /><span>Wed</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="thu" data-on-change="scheduleDaysChanged" /><span>Thu</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="fri" data-on-change="scheduleDaysChanged" /><span>Fri</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="sat" data-on-change="scheduleDaysChanged" /><span>Sat</span></label>
+                  <label class="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-lg bg-s2 border border-line2 text-xs text-fg2 cursor-pointer"><input type="checkbox" class="schedule-day accent-spotify-green" value="sun" data-on-change="scheduleDaysChanged" /><span>Sun</span></label>
+                    </div>
+                    <input type="hidden" id="cfg-schedule-days" data-setting="schedule.days" />
+                    <p id="cfg-days-error" class="hidden mt-1 text-xs text-red-400" role="alert">Pick at least one day.</p>
+                  </fieldset>
+                  <p class="text-2xs text-fg4 max-w-2xl">A download that has already started always finishes, and waiting tracks stay in the queue until the window opens. A window such as 22:00 to 06:00 runs overnight. In the queue, "Download now anyway" lifts the schedule until you restart the app.</p>
+                </div>
+              </div>
+              <div class="pt-3 border-t border-line space-y-2">
+                <label class="flex items-center space-x-2 text-xs text-fg2 cursor-pointer"><input type="checkbox" id="cfg-notify" data-setting="notifications.enabled" class="accent-spotify-green" /><span>Show a Windows notification when a batch of downloads finishes</span></label>
+                <label class="flex items-center space-x-2 text-xs text-fg2 cursor-pointer"><input type="checkbox" id="cfg-tray" data-setting="notifications.minimize_to_tray" class="accent-spotify-green" /><span>Minimising keeps the app running in the tray (click its icon to bring it back)</span></label>
+                <p class="text-2xs text-fg4">These apply in the desktop window. The tray icon is only there while one of them is on; right-click it to pause downloads or quit.</p>
+              </div>
             </section>
 
             <!-- Account -->
@@ -1407,13 +1489,23 @@
                 <input type="file" id="settings-import-input" accept="application/json,.json" class="hidden" aria-label="Settings file to import" data-on-change="importSettingsFile" />
               </div>
 
+              <div class="pt-3 border-t border-line space-y-3" id="backup-panel">
+                <div class="flex items-center justify-between gap-2">
+                  <h4 class="text-xs font-bold text-fg2">Database backups <span class="font-normal text-fg3">(history, queue and library index)</span></h4>
+                  <button type="button" data-on-click="openBackupsFolder" class="text-2xs text-fg3 hover:text-fg underline">Show folder</button>
+                </div>
+                <div id="restore-banner" role="status" class="hidden p-3 rounded-xl border text-xs"></div>
+                <ul id="backup-list" class="space-y-1.5 text-xs max-h-56 overflow-auto"><li class="text-fg3 py-2">Loading backups…</li></ul>
+              </div>
+
               <div class="pt-3 border-t border-line space-y-3">
                 <div class="flex items-center justify-between">
                   <h4 class="text-xs font-bold text-fg2">Updates <span class="font-normal text-fg3">(off unless you add a feed address)</span></h4>
                   <span class="px-2.5 py-1 rounded-full bg-s3 text-fg3 text-2xs font-mono">Installed: v<span id="update-current-version">--</span></span>
                 </div>
                 <div class="space-y-1.5">
-                  <label for="cfg-update-feed-url" class="block text-xs font-semibold text-fg2">Update feed URL (HTTPS)</label>
+                  <div class="flex items-center justify-between gap-2"><label for="cfg-update-feed-url" class="block text-xs font-semibold text-fg2">Update feed URL (HTTPS)</label>
+                    <button type="button" data-on-click="useReleaseFeed" class="text-2xs text-fg3 hover:text-fg underline">Use this project's GitHub releases</button></div>
                   <input type="url" id="cfg-update-feed-url" data-setting="maintenance.update_feed_url" placeholder="https://example.com/updates.json" class="w-full bg-s2 border border-line2 rounded-xl px-4 py-2.5 text-xs font-mono text-fg focus:border-spotify-green focus:outline-none" />
                 </div>
                 <label class="flex items-center space-x-2 text-xs text-fg2 cursor-pointer"><input type="checkbox" id="cfg-update-signed" data-setting="maintenance.update_require_signature" class="accent-spotify-green" /><span>Only install updates with a valid code signature</span></label>
@@ -1440,94 +1532,100 @@
 
       <!-- ================= TAB 9: LIBRARY INTELLIGENCE ================= -->
       <section id="tab-intelligence" class="tab-content hidden space-y-6">
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
-          <!-- Health Score Card -->
-          <div class="p-6 rounded-3xl bg-s1 border border-line flex items-center space-x-6">
-            <div class="relative w-24 h-24 flex items-center justify-center shrink-0">
-              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36">
+        <!-- Overview: score + collection facts in one compact band -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div class="p-5 rounded-3xl bg-s1 border border-line flex items-center gap-5">
+            <div class="relative w-20 h-20 flex items-center justify-center shrink-0">
+              <svg class="w-full h-full transform -rotate-90" viewBox="0 0 36 36" aria-hidden="true">
                 <path class="text-[#222]" stroke-width="3" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
                 <path id="intel-health-ring" class="text-spotify-green transition-all duration-1000" stroke-dasharray="100, 100" stroke-width="3" stroke-linecap="round" stroke="currentColor" fill="none" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
               </svg>
               <div class="absolute text-center">
-                <span id="intel-health-score" class="text-2xl font-black font-mono text-fg">100%</span>
+                <span id="intel-health-score" class="text-xl font-black font-mono text-fg">100%</span>
                 <div class="text-2xs uppercase tracking-wider text-fg3 font-bold">Health</div>
               </div>
             </div>
-            <div class="space-y-1">
-              <h3 class="text-base font-bold text-fg">Library Health Status</h3>
-              <p class="text-xs text-fg3">Calculated directly from real indexed tracks: tag integrity, artwork presence, audio length, and deduplication.</p>
-              <div id="intel-last-scan-label" class="text-2xs text-fg4 font-mono pt-1">Last Scan: Never</div>
+            <div class="space-y-1 min-w-0">
+              <h3 class="text-base font-bold text-fg">Library health</h3>
+              <p class="text-xs text-fg3">Based on your indexed tracks: tags, artwork, length and duplicates.</p>
+              <div id="intel-last-scan-label" class="text-2xs text-fg4 font-mono pt-0.5">Last Scan: Never</div>
             </div>
           </div>
 
-          <!-- Quick Stats Cards -->
-          <div class="p-6 rounded-3xl bg-s1 border border-line flex flex-col justify-between">
-            <span class="text-xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="music" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Tracks & Artists</span>
-            <div class="flex justify-between items-end">
-              <div>
-                <div id="intel-total-tracks" class="text-2xl font-black font-mono text-fg">0</div>
-                <div class="text-2xs text-fg3">Total Local Tracks</div>
-              </div>
-              <div class="text-right">
-                <div id="intel-total-artists" class="text-lg font-bold font-mono text-fg2">0</div>
-                <div class="text-2xs text-fg3">Artists</div>
-              </div>
-            </div>
-          </div>
-
-          <div class="p-6 rounded-3xl bg-s1 border border-line flex flex-col justify-between">
-            <span class="text-xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="hard-drive" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Storage & Duration</span>
-            <div class="flex justify-between items-end">
-              <div>
-                <div id="intel-total-size" class="text-2xl font-black font-mono text-fg">0.0 MB</div>
-                <div class="text-2xs text-fg3">Collection Size</div>
-              </div>
-              <div class="text-right">
-                <div id="intel-total-hours" class="text-lg font-bold font-mono text-fg2">0.0h</div>
-                <div class="text-2xs text-fg3">Total Playtime</div>
-              </div>
-            </div>
-          </div>
+          <dl class="lg:col-span-2 p-5 rounded-3xl bg-s1 border border-line grid grid-cols-2 sm:grid-cols-4 gap-4 content-center">
+            <div><dt class="text-2xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="music" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Tracks</dt>
+              <dd id="intel-total-tracks" class="text-2xl font-black font-mono text-fg">0</dd></div>
+            <div><dt class="text-2xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="mic-2" class="w-3.5 h-3.5 mr-1.5 text-blue-400"></i> Artists</dt>
+              <dd id="intel-total-artists" class="text-2xl font-black font-mono text-fg">0</dd></div>
+            <div><dt class="text-2xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="hard-drive" class="w-3.5 h-3.5 mr-1.5 text-emerald-400"></i> Size</dt>
+              <dd id="intel-total-size" class="text-2xl font-black font-mono text-fg">0.0 MB</dd></div>
+            <div><dt class="text-2xs text-fg3 font-semibold flex items-center"><i aria-hidden="true" data-lucide="clock" class="w-3.5 h-3.5 mr-1.5 text-amber-400"></i> Playtime</dt>
+              <dd id="intel-total-hours" class="text-2xl font-black font-mono text-fg">0.0h</dd></div>
+          </dl>
         </div>
 
-        <!-- 6-Metric Interactive Drill-Down Ribbon -->
-        <div class="grid grid-cols-2 md:grid-cols-6 gap-3 text-xs">
-          <div data-on-click="drillDownToLibrary_4f27fa" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-amber-500/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Missing Tags</div>
-            <div id="drill-missing-tags" class="text-xl font-bold font-mono text-amber-400">0</div>
-            <div class="text-2xs text-fg4">Click to filter →</div>
-          </div>
-
-          <div data-on-click="drillDownToLibrary_c0fb70" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-blue-500/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Missing Art</div>
-            <div id="drill-missing-art" class="text-xl font-bold font-mono text-blue-400">0</div>
-            <div class="text-2xs text-fg4">Click to filter →</div>
-          </div>
-
-          <div data-on-click="drillDownToLibrary_14ca1f" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-red-500/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Unreadable</div>
-            <div id="drill-unreadable" class="text-xl font-bold font-mono text-red-400">0</div>
-            <div class="text-2xs text-fg4">Corrupt tags →</div>
-          </div>
-
-          <div data-on-click="drillDownToDuplicates_193278" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-spotify-green/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Exact Dups</div>
-            <div id="drill-exact-dups" class="text-xl font-bold font-mono text-spotify-green">0</div>
-            <div class="text-2xs text-fg4">SHA-256 match →</div>
-          </div>
-
-          <div data-on-click="drillDownToDuplicates_f512c3" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-purple-500/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Probable Dups</div>
-            <div id="drill-probable-dups" class="text-xl font-bold font-mono text-purple-400">0</div>
-            <div class="text-2xs text-fg4">Recording delta →</div>
-          </div>
-
-          <div data-on-click="drillDownToLibrary_3064c5" class="p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-cyan-500/50 cursor-pointer transition-all space-y-1">
-            <div class="text-2xs uppercase font-bold text-fg3">Anomalies</div>
-            <div id="drill-anomalies" class="text-xl font-bold font-mono text-cyan-400">0</div>
-            <div class="text-2xs text-fg4">Duration/Bitrate →</div>
-          </div>
+        <!-- Problems at a glance: every tile jumps to the place where you fix it -->
+        <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 text-xs">
+          <button type="button" data-on-click="drillDownToLibrary_4f27fa" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-amber-500/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Missing tags</span>
+            <span id="drill-missing-tags" class="block text-xl font-bold font-mono text-amber-400">0</span>
+            <span class="block text-2xs text-fg4">Show in Tracks →</span>
+          </button>
+          <button type="button" data-on-click="drillDownToLibrary_c0fb70" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-blue-500/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Missing art</span>
+            <span id="drill-missing-art" class="block text-xl font-bold font-mono text-blue-400">0</span>
+            <span class="block text-2xs text-fg4">Show in Tracks →</span>
+          </button>
+          <button type="button" data-on-click="drillDownToLibrary_14ca1f" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-red-500/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Unreadable</span>
+            <span id="drill-unreadable" class="block text-xl font-bold font-mono text-red-400">0</span>
+            <span class="block text-2xs text-fg4">Corrupt tags →</span>
+          </button>
+          <button type="button" data-on-click="drillDownToDuplicates_193278" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-spotify-green/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Exact duplicates</span>
+            <span id="drill-exact-dups" class="block text-xl font-bold font-mono text-spotify-green">0</span>
+            <span class="block text-2xs text-fg4">Review in Cleanup →</span>
+          </button>
+          <button type="button" data-on-click="drillDownToDuplicates_f512c3" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-purple-500/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Probable duplicates</span>
+            <span id="drill-probable-dups" class="block text-xl font-bold font-mono text-purple-400">0</span>
+            <span class="block text-2xs text-fg4">Review in Cleanup →</span>
+          </button>
+          <button type="button" data-on-click="drillDownToLibrary_3064c5" class="text-left p-3.5 rounded-2xl bg-s1 hover:bg-hv border border-line hover:border-cyan-500/50 transition-all space-y-1 min-w-0">
+            <span class="block text-2xs uppercase font-bold text-fg3">Anomalies</span>
+            <span id="drill-anomalies" class="block text-xl font-bold font-mono text-cyan-400">0</span>
+            <span class="block text-2xs text-fg4">Length / bitrate →</span>
+          </button>
         </div>
+
+        <!-- Fix tags & artwork automatically -->
+        <section class="p-6 rounded-3xl bg-s1 border border-line space-y-4" aria-labelledby="h-autofix">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+              <h3 id="h-autofix" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="wand-sparkles" class="w-4 h-4 mr-2 text-spotify-green"></i> Fix tags &amp; artwork automatically</h3>
+              <p class="text-xs text-fg3 max-w-3xl">Looks tracks with missing information up on MusicBrainz and the Cover Art Archive. Only the title, artist and length of each track are sent, and only when you press Look up. You review every suggestion first; nothing is written until you apply.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="autofix-filter" class="sr-only">Which tracks</label>
+              <select id="autofix-filter" class="bg-s2 border border-line2 rounded-lg px-2.5 py-2 text-xs text-fg">
+                <option value="all">Missing tags or artwork</option>
+                <option value="missing_tags">Missing tags</option>
+                <option value="missing_art">Missing artwork</option>
+              </select>
+              <label for="autofix-limit" class="sr-only">How many tracks</label>
+              <select id="autofix-limit" class="bg-s2 border border-line2 rounded-lg px-2.5 py-2 text-xs text-fg">
+                <option value="25">Up to 25 tracks</option>
+                <option value="50" selected>Up to 50 tracks</option>
+                <option value="100">Up to 100 tracks</option>
+                <option value="200">Up to 200 tracks</option>
+              </select>
+              <button type="button" id="btn-autofix-start" data-on-click="autofixStart" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs flex items-center"><i aria-hidden="true" data-lucide="search" class="w-3.5 h-3.5 mr-1.5"></i> Look up</button>
+              <button type="button" id="btn-autofix-cancel" data-on-click="autofixCancel" class="hidden px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg2">Stop</button>
+            </div>
+          </div>
+          <div id="autofix-status" class="hidden space-y-2" aria-live="polite"></div>
+          <div id="autofix-results" class="hidden space-y-3"></div>
+        </section>
 
         <!-- Format & Bitrate Breakdown & Action Items -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -1743,20 +1841,35 @@
             </button>
           </div>
 
-          <!-- Safe Duplicate Scanner Controls -->
+          <!-- One duplicate workflow: pick a mode below, rescan here; sound-based matching lives in Quality -->
           <div class="p-6 rounded-3xl bg-s1 border border-line space-y-3">
-            <h3 class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="copy" class="w-4 h-4 mr-2 text-spotify-green"></i> Multi-Method Duplicate Detection</h3>
-            <p class="text-xs text-fg3">Identifies exact bit-for-bit files (SHA-256) and probable recording duplicates (fuzzy metadata match).</p>
-            <div class="flex items-center space-x-2">
-              <button data-on-click="loadExactDuplicates_8ea43f" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 text-fg border border-line2 font-semibold text-xs flex items-center">
-                <i aria-hidden="true" data-lucide="hash" class="w-3.5 h-3.5 mr-1.5 text-spotify-green"></i> Scan Exact (SHA-256)
+            <h3 class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="copy" class="w-4 h-4 mr-2 text-spotify-green"></i> Duplicate detection</h3>
+            <p class="text-xs text-fg3">Finds identical files (SHA-256) and probable repeats of the same recording (matching title, artist and length). Choose a mode in the list below.</p>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" data-on-click="rescanDuplicates" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 text-fg border border-line2 font-semibold text-xs flex items-center">
+                <i aria-hidden="true" data-lucide="refresh-cw" class="w-3.5 h-3.5 mr-1.5 text-spotify-green"></i> Rescan current mode
               </button>
-              <button data-on-click="loadProbableDuplicates_5f5318" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 text-fg border border-line2 font-semibold text-xs flex items-center">
-                <i aria-hidden="true" data-lucide="git-merge" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Scan Probable Recordings
+              <button type="button" data-on-click="goTab" data-args-click='["quality_lab"]' class="px-4 py-2 rounded-xl text-fg3 hover:text-fg hover:bg-hv border border-line text-xs font-semibold flex items-center">
+                <i aria-hidden="true" data-lucide="fingerprint" class="w-3.5 h-3.5 mr-1.5 text-purple-400"></i> Compare by sound instead →
               </button>
             </div>
           </div>
         </div>
+
+        <!-- One-click cleanup: keep the best copy of each song -->
+        <section class="p-6 rounded-3xl bg-s1 border border-line space-y-4" aria-labelledby="h-autodedup">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="min-w-0">
+              <h3 id="h-autodedup" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="wand-sparkles" class="w-4 h-4 mr-2 text-spotify-green"></i> Clean up duplicates automatically</h3>
+              <p class="text-xs text-fg3 max-w-3xl">Keeps the best copy of each song (lossless first, then bitrate, artwork and tags) and moves the others into a backup folder inside Downloads. Nothing is deleted, you review the plan first, and the whole cleanup can be undone. Copies that are better in some way are left for you to decide.</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button type="button" id="btn-dedup-plan" data-on-click="dedupPlan" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs flex items-center"><i aria-hidden="true" data-lucide="search-check" class="w-3.5 h-3.5 mr-1.5"></i> Find what can be cleaned</button>
+              <button type="button" id="btn-dedup-undo" data-on-click="dedupUndo" class="hidden px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg2"></button>
+            </div>
+          </div>
+          <div id="dedup-plan" class="hidden space-y-3" aria-live="polite"></div>
+        </section>
 
         <!-- Duplicate Category Navigation & Table -->
         <div class="p-6 rounded-3xl bg-s1 border border-line space-y-4">
@@ -1778,6 +1891,147 @@
             <div class="text-fg4 text-center py-6">Select a duplicate detection mode above to scan your audio library.</div>
           </div>
         </div>
+      </section>
+
+      <!-- ================= PLUGINS & EXTENSIONS ================= -->
+      <section id="tab-plugins" class="tab-content hidden space-y-6" aria-label="Plugins and extensions">
+        <div class="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 class="text-xl font-bold">Plugins &amp; extensions</h2>
+            <p class="text-xs text-fg3 max-w-3xl">Switch built-in features on or off, and add small plugin packs that send a notification or copy files when something happens. A pack only <em>describes</em> what it does, it never runs code, and you can read exactly what it will do before you turn it on.</p>
+          </div>
+          <div>
+            <button type="button" data-on-click="pluginsPickFile" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold flex items-center"><i aria-hidden="true" data-lucide="upload" class="w-3.5 h-3.5 mr-1.5"></i> Add a plugin pack…</button>
+            <input type="file" id="plugin-file-input" accept="application/json,.json" class="hidden" aria-label="Plugin pack file" data-on-change="pluginsImportFile" />
+          </div>
+        </div>
+
+        <section aria-labelledby="h-plugins-builtin" class="space-y-3">
+          <h3 id="h-plugins-builtin" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="toggle-right" class="w-4 h-4 mr-2 text-spotify-green"></i> Built-in features</h3>
+          <ul id="plugins-builtin" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></ul>
+        </section>
+
+        <section aria-labelledby="h-plugins-packs" class="space-y-3">
+          <h3 id="h-plugins-packs" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="puzzle" class="w-4 h-4 mr-2 text-spotify-green"></i> Plugin packs</h3>
+          <div id="plugins-packs" class="space-y-3"><p class="text-xs text-fg3">Loading plugins…</p></div>
+        </section>
+      </section>
+
+      <!-- ================= RULES & HOOKS ================= -->
+      <section id="tab-rules" class="tab-content hidden space-y-6" aria-label="Rules and hooks">
+        <div>
+          <h2 class="text-xl font-bold">Rules &amp; hooks</h2>
+          <p class="text-xs text-fg3 max-w-3xl">Rules tidy your library automatically: pick which files they apply to and where they should go. Nothing moves until you've seen a preview and confirmed, and every batch can be undone. Hooks run after a download finishes.</p>
+        </div>
+
+        <!-- Rules -->
+        <section class="fx-card p-6 rounded-2xl bg-s1 border border-line space-y-4" aria-labelledby="h-rules">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 id="h-rules" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="list-checks" class="w-4 h-4 mr-2 text-spotify-green"></i> Organising rules</h3>
+              <p class="text-xs text-fg3">Checked top to bottom (lowest priority number first); the first rule that matches a file decides what happens to it.</p>
+            </div>
+            <button type="button" data-on-click="rulesNew" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs flex items-center"><i aria-hidden="true" data-lucide="plus" class="w-3.5 h-3.5 mr-1.5"></i> New rule</button>
+          </div>
+
+          <form id="rule-form" data-on-submit="rulesSave" class="hidden p-4 rounded-2xl bg-s2 border border-line space-y-3" novalidate>
+            <input type="hidden" id="rule-id" />
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3">
+              <div class="md:col-span-3"><label for="rule-name" class="block text-2xs font-semibold text-fg3 mb-1">Rule name</label>
+                <input id="rule-name" type="text" maxlength="120" placeholder="e.g. Rock into genre folders" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg focus:border-spotify-green focus:outline-none" /></div>
+              <div><label for="rule-priority" class="block text-2xs font-semibold text-fg3 mb-1">Priority (lower runs first)</label>
+                <input id="rule-priority" type="number" min="0" max="9999" value="10" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg" /></div>
+            </div>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <fieldset class="space-y-2"><legend class="text-xs font-bold text-fg2">When a file…</legend>
+                <label for="rule-cond-type" class="sr-only">Condition</label>
+                <select id="rule-cond-type" data-on-change="rulesConditionChanged" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg"></select>
+                <label for="rule-cond-value" class="sr-only">Condition value</label>
+                <input id="rule-cond-value" type="text" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg focus:border-spotify-green focus:outline-none" />
+                <p id="rule-cond-hint" class="text-2xs text-fg4"></p>
+              </fieldset>
+              <fieldset class="space-y-2"><legend class="text-xs font-bold text-fg2">…then</legend>
+                <label for="rule-action-type" class="sr-only">Action</label>
+                <select id="rule-action-type" data-on-change="rulesActionChanged" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg"></select>
+                <label for="rule-action-value" class="sr-only">Pattern</label>
+                <input id="rule-action-value" type="text" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs font-mono text-fg focus:border-spotify-green focus:outline-none" />
+                <p id="rule-action-hint" class="text-2xs text-fg4"></p>
+              </fieldset>
+            </div>
+            <p id="rule-form-error" role="alert" class="hidden text-xs text-red-400"></p>
+            <div class="flex items-center gap-2">
+              <button type="submit" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">Save rule</button>
+              <button type="button" data-on-click="rulesCancel" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold text-fg2">Cancel</button>
+            </div>
+          </form>
+
+          <ul id="rules-list" class="space-y-2"><li class="text-xs text-fg3 py-3">Loading rules…</li></ul>
+        </section>
+
+        <!-- Preview & apply -->
+        <section class="fx-card p-6 rounded-2xl bg-s1 border border-line space-y-4" aria-labelledby="h-rules-apply">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 id="h-rules-apply" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="eye" class="w-4 h-4 mr-2 text-spotify-green"></i> Preview &amp; apply</h3>
+              <p class="text-xs text-fg3">See exactly what would move before anything does. With no enabled rules, files are sorted into Artist / Album folders.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <label for="rules-collision" class="sr-only">If a file already exists at the destination</label>
+              <select id="rules-collision" class="bg-s2 border border-line2 rounded-lg px-2.5 py-2 text-xs text-fg">
+                <option value="skip">If it exists: skip</option>
+                <option value="rename">If it exists: keep both</option>
+                <option value="overwrite">If it exists: replace (recoverable)</option>
+              </select>
+              <button type="button" id="btn-rules-preview" data-on-click="rulesPreview" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 border border-line2 text-xs font-semibold">Preview changes</button>
+              <button type="button" id="btn-rules-apply" data-on-click="rulesApply" disabled class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed">Apply…</button>
+            </div>
+          </div>
+          <div id="rules-summary" class="hidden grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-center"></div>
+          <div class="overflow-auto max-h-80 rounded-xl border border-line">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-s2 text-fg3 uppercase text-2xs tracking-wider sticky top-0"><tr><th scope="col" class="py-2.5 px-3">File</th><th scope="col" class="py-2.5 px-3">Will move to</th><th scope="col" class="py-2.5 px-3">Rule</th></tr></thead>
+              <tbody id="rules-preview-body" class="divide-y divide-line"><tr><td colspan="3" class="py-6 text-center text-fg3">Click “Preview changes” to see what your rules would do.</td></tr></tbody>
+            </table>
+          </div>
+          <div>
+            <h4 class="text-xs font-bold text-fg2 mb-2">Recent batches</h4>
+            <ul id="rules-batches" class="space-y-1.5"><li class="text-xs text-fg3">Nothing has been applied yet.</li></ul>
+          </div>
+        </section>
+
+        <!-- Hooks -->
+        <section class="fx-card p-6 rounded-2xl bg-s1 border border-line space-y-4" aria-labelledby="h-hooks">
+          <div>
+            <h3 id="h-hooks" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="webhook" class="w-4 h-4 mr-2 text-spotify-green"></i> Hooks</h3>
+            <p class="text-xs text-fg3">Run something after a download finishes or fails: call a web address with the track details, or copy the finished file into another folder inside the app.</p>
+          </div>
+          <ul id="hooks-list" class="space-y-2"><li class="text-xs text-fg3 py-2">No hooks yet.</li></ul>
+          <form id="hook-form" data-on-submit="hooksSave" class="grid grid-cols-1 md:grid-cols-12 gap-3 items-end p-4 rounded-2xl bg-s2 border border-line" novalidate>
+            <div class="md:col-span-3"><label for="hook-name" class="block text-2xs font-semibold text-fg3 mb-1">Name</label>
+              <input id="hook-name" type="text" maxlength="120" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg" /></div>
+            <div class="md:col-span-3"><label for="hook-event" class="block text-2xs font-semibold text-fg3 mb-1">When</label>
+              <select id="hook-event" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg"><option value="on_download_complete">a download finishes</option><option value="on_download_failed">a download fails</option><option value="on_queue_finished">the queue finishes a batch</option></select></div>
+            <div class="md:col-span-2"><label for="hook-action" class="block text-2xs font-semibold text-fg3 mb-1">Do</label>
+              <select id="hook-action" data-on-change="hooksActionChanged" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs text-fg"><option value="webhook">call a web address</option><option value="copy_to_folder">copy the file</option></select></div>
+            <div class="md:col-span-3"><label for="hook-target" id="hook-target-label" class="block text-2xs font-semibold text-fg3 mb-1">Web address (https://…)</label>
+              <input id="hook-target" type="text" class="w-full bg-s1 border border-line2 rounded-lg px-3 py-2 text-xs font-mono text-fg" /></div>
+            <div class="md:col-span-1"><button type="submit" class="w-full px-3 py-2 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">Add</button></div>
+            <p id="hook-form-error" role="alert" class="hidden md:col-span-12 text-xs text-red-400"></p>
+          </form>
+        </section>
+
+        <!-- Archive -->
+        <section class="fx-card p-6 rounded-2xl bg-s1 border border-line space-y-3" aria-labelledby="h-archive">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 id="h-archive" class="font-bold text-sm flex items-center text-fg"><i aria-hidden="true" data-lucide="archive" class="w-4 h-4 mr-2 text-spotify-green"></i> Download archive</h3>
+              <p class="text-xs text-fg3">Tracks the app has already downloaded, so a re-import doesn't fetch them twice.</p>
+            </div>
+            <label for="archive-filter" class="sr-only">Filter the archive</label>
+            <input id="archive-filter" type="search" data-on-input="archiveFilter" placeholder="Filter by title or artist…" class="bg-s2 border border-line2 rounded-lg px-3 py-2 text-xs text-fg w-56" />
+          </div>
+          <ul id="archive-list" class="divide-y divide-line max-h-72 overflow-y-auto rounded-xl border border-line"><li class="text-xs text-fg3 p-4">Loading…</li></ul>
+        </section>
       </section>
 
       <!-- TAB 14: LOCAL FOLDER WATCHER & SAFE LIBRARY INTAKE -->
@@ -2594,6 +2848,11 @@
           </div>
           <p id="detail-job-error-text" class="text-2xs text-red-200/90 font-mono break-all whitespace-pre-wrap max-h-36 overflow-y-auto bg-black/30 p-2 rounded-lg"></p>
         </div>
+        <div id="detail-job-help" class="hidden p-3.5 rounded-2xl bg-s2 border border-line space-y-2">
+          <div id="detail-job-help-title" class="text-xs font-bold text-fg"></div>
+          <p id="detail-job-help-text" class="text-xs text-fg3"></p>
+          <button type="button" id="detail-job-help-action" class="hidden px-3.5 py-1.5 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs"></button>
+        </div>
       </div>
 
       <div class="flex justify-between items-center pt-3 border-t border-line">
@@ -2916,6 +3175,9 @@
   <script src="/static/js/fx.js"></script>
   <script src="/static/js/core.js"></script>
   <script src="/static/js/queue.js"></script>
+  <script src="/static/js/history.js"></script>
+  <script src="/static/js/autofix.js"></script>
+  <script src="/static/js/plugins.js"></script>
   <script src="/static/js/library.js"></script>
   <script src="/static/js/player.js"></script>
   <script src="/static/js/settings.js"></script>
@@ -2924,6 +3186,7 @@
   <script src="/static/js/watcher.js"></script>
   <script src="/static/js/pages.js"></script>
   <script src="/static/js/sources.js"></script>
+  <script src="/static/js/rules.js"></script>
   <script src="/static/js/palette.js"></script>
   <script src="/static/js/actions.js"></script>
   <script src="/static/js/boot.js"></script>
