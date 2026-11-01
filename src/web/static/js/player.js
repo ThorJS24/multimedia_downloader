@@ -379,7 +379,6 @@ function paintTrackInfo(meta) {
   set("queue-now-artist", meta.artist);
 
   const coverUrl = `/api/library/cover?path=${encodeURIComponent(meta.path)}`;
-  FX.coverAccent(coverUrl);       // tint glows/spotlights with the album colour
   [["player-cover-art", "player-placeholder-icon"], ["drawer-cover-art", "drawer-placeholder-icon"]].forEach(([imgId, phId]) => {
     const img = document.getElementById(imgId), ph = document.getElementById(phId);
     if (img) { img.src = coverUrl; img.classList.remove("hidden"); }
@@ -398,7 +397,7 @@ function paintTrackInfo(meta) {
 // Upgrade a page-sized play queue to the whole library view (same filter/sort) in the background.
 async function upgradeQueueToFullLibrary(currentPath) {
   try {
-    const params = new URLSearchParams({ search: libSearchQuery, filter: libCurrentFilter, limit: 5000, offset: 0, sort_by: libSortBy, sort_dir: libSortDir });
+    const params = new URLSearchParams({ search: libSearchQuery, filter: libCurrentFilter, limit: 50000, offset: 0, sort_by: libSortBy, sort_dir: libSortDir });
     const data = await UI.api(`/api/library?${params}`, { quiet: true });
     const files = data.files || [];
     const idx = files.findIndex((f) => f.path === currentPath);

@@ -5,9 +5,10 @@ import time
 from flask import jsonify, request, send_file, Blueprint
 
 from src.config_loader import get_downloads_path
-from src.repositories import AuditRepository, StagingRepository
+from src.repositories import AuditRepository, LibraryRepository, StagingRepository
 from src.folder_watcher import FolderWatcherService
 from src.library_indexer import LibraryIndexer
+from src.plugin_packs import MANIFEST_MAX_BYTES, PluginPacks
 from src.plugin_engine import DownloadArchive, PluginEngine
 from src.rules_engine import RulesEngine
 from src.scheduler_service import SchedulerService
@@ -24,11 +25,72 @@ def get_rules():
     return jsonify({"success": True, "rules": RulesEngine.get_rules()})
 
 
+HOOK_EVENTS = PluginEngine.EVENTS
+CONDITIONS_WITHOUT_VALUE = {"all"}
+
+
+def _inside_app(path: Path) -> bool:
+    return PluginEngine.inside_app(path)
+
+
+def _template_error(action_type: str, template: str):
+    if not template:
+        return "An action pattern is required."
+    if action_type == "flag_issue":
+        return None
+    parts = template.replace("\\", "/").split("/")
+    if template.startswith(("/", "\\")) or ":" in template or ".." in parts:
+        return "The pattern must be relative (no drive letters, leading slashes or '..')."
+    if action_type == "rename_template" and len(parts) > 1:
+        return "A rename pattern is just a file name; use 'Move to folder pattern' for folders."
+    return None
+
+
+@bp.route("/api/rules/meta", methods=["GET"])
+def rules_meta():
+    return jsonify({
+        "success": True,
+        "conditions": sorted(RulesEngine.SUPPORTED_CONDITIONS),
+        "actions": sorted(RulesEngine.SUPPORTED_ACTIONS),
+        "hook_events": list(HOOK_EVENTS),
+        "hook_actions": list(PluginEngine.ALLOWED_ACTIONS),
+    })
+
+
 @bp.route("/api/rules/save", methods=["POST"])
 def save_rule():
     data = request.json or {}
-    rule = RulesEngine.save_rule(data)
+    name = str(data.get("name", "")).strip()
+    ctype = str(data.get("condition_type", "all")).strip()
+    cvalue = str(data.get("condition_value", "")).strip()
+    atype = str(data.get("action_type", "move_to_template")).strip()
+    avalue = str(data.get("action_value", "")).strip()
+    try:
+        priority = int(data.get("priority", 10))
+    except (TypeError, ValueError):
+        return jsonify({"success": False, "error": "Priority must be a whole number."}), 400
+    if not name or len(name) > 120:
+        return jsonify({"success": False, "error": "Give the rule a name (up to 120 characters)."}), 400
+    if ctype not in RulesEngine.SUPPORTED_CONDITIONS:
+        return jsonify({"success": False, "error": f"Unsupported condition '{ctype}'."}), 400
+    if atype not in RulesEngine.SUPPORTED_ACTIONS:
+        return jsonify({"success": False, "error": f"Unsupported action '{atype}'."}), 400
+    if ctype not in CONDITIONS_WITHOUT_VALUE and not cvalue:
+        return jsonify({"success": False, "error": "That condition needs a value."}), 400
+    if not 0 <= priority <= 9999:
+        return jsonify({"success": False, "error": "Priority must be between 0 and 9999."}), 400
+    err = _template_error(atype, avalue)
+    if err:
+        return jsonify({"success": False, "error": err}), 400
+    rule = RulesEngine.save_rule({**data, "name": name, "priority": priority, "condition_type": ctype,
+                                  "condition_value": cvalue, "action_type": atype, "action_value": avalue})
     return jsonify({"success": True, "rule": rule})
+
+
+@bp.route("/api/rules/batches", methods=["GET"])
+def rules_batches():
+    """One row per executed batch so the UI can offer a one-click undo."""
+    return jsonify({"success": True, "batches": RulesEngine.get_batches()})
 
 
 @bp.route("/api/rules/delete", methods=["POST"])
@@ -55,7 +117,21 @@ def execute_rules():
     data = request.json or {}
     actions = data.get("actions", [])
     policy = data.get("collision_policy", "skip")
-    res = RulesEngine.execute(actions, collision_policy=policy)
+    if policy not in ("skip", "rename", "overwrite"):
+        return jsonify({"success": False, "error": "Unknown collision policy."}), 400
+    if not isinstance(actions, list) or not actions:
+        return jsonify({"success": False, "error": "There is nothing to apply."}), 400
+    downloads = get_downloads_path().resolve()
+    known = {r["path"] for r in LibraryRepository.tracks_by_paths([str(a.get("source_path", "")) for a in actions if isinstance(a, dict)])}
+    safe = []
+    for item in actions:
+        if not isinstance(item, dict) or not item.get("source_path") or not item.get("target_path"):
+            return jsonify({"success": False, "error": "Malformed action in the request."}), 400
+        src, dst = str(item["source_path"]), Path(str(item["target_path"])).resolve()
+        if src not in known or not (dst == downloads or dst.is_relative_to(downloads)):
+            return jsonify({"success": False, "error": "Only indexed library files can be moved, and only inside the downloads folder."}), 400
+        safe.append(item)
+    res = RulesEngine.execute(safe, collision_policy=policy)
     return jsonify(res)
 
 
@@ -184,6 +260,51 @@ def get_release_calendar():
 
 
 # ================= PLUGINS & ARCHIVE =================
+# ---- plugin packs (declarative add-ons) and the built-in feature switches
+@bp.route("/api/plugins/packs", methods=["GET"])
+def list_plugin_packs():
+    return jsonify({"packs": PluginPacks.list_packs(), "builtin": PluginPacks.builtin_features()})
+
+
+@bp.route("/api/plugins/packs/import", methods=["POST"])
+def import_plugin_pack():
+    if request.content_length and request.content_length > MANIFEST_MAX_BYTES * 2:
+        return jsonify({"success": False, "error": "That file is too large to be a plugin pack."}), 413
+    try:
+        pack = PluginPacks.import_pack((request.json or {}).get("manifest"))
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, "pack": pack})
+
+
+@bp.route("/api/plugins/packs/configure", methods=["POST"])
+def configure_plugin_pack():
+    data = request.json or {}
+    values = data.get("values") or {}
+    if not isinstance(values, dict):
+        return jsonify({"success": False, "error": "Settings must be an object."}), 400
+    try:
+        pack = PluginPacks.configure(str(data.get("id", "")), values, data.get("enabled"))
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, "pack": pack})
+
+
+@bp.route("/api/plugins/packs/test", methods=["POST"])
+def test_plugin_pack():
+    try:
+        results = PluginPacks.send_test(str((request.json or {}).get("id", "")))
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, "results": results})
+
+
+@bp.route("/api/plugins/packs/remove", methods=["POST"])
+def remove_plugin_pack():
+    PluginPacks.remove(str((request.json or {}).get("id", "")))
+    return jsonify({"success": True})
+
+
 @bp.route("/api/plugins/hooks", methods=["GET"])
 def list_plugin_hooks():
     return jsonify({"hooks": PluginEngine.list_hooks()})
@@ -196,7 +317,16 @@ def register_plugin_hook():
     name = data.get("name", "Custom Hook")
     ev = data.get("event_type", "on_download_complete")
     act = data.get("action_type", "webhook")
-    target = data.get("target", "")
+    target = str(data.get("target", "")).strip()
+    name = str(name).strip()
+    if not name or len(name) > 120:
+        return jsonify({"success": False, "error": "Give the hook a name (up to 120 characters)."}), 400
+    if ev not in HOOK_EVENTS:
+        return jsonify({"success": False, "error": f"Unsupported event '{ev}'."}), 400
+    if not target:
+        return jsonify({"success": False, "error": "A target is required."}), 400
+    if act == "copy_to_folder" and not _inside_app(Path(target)):
+        return jsonify({"success": False, "error": "Hooks may only copy files into folders inside the application directory."}), 400
     try:
         PluginEngine.register_hook(hid, name, ev, act, target, data.get("config"))
     except ValueError as e:

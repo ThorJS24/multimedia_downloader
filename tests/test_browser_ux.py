@@ -11,6 +11,7 @@ try:
 except ImportError:
     from tests._nav import go_tab  # noqa: F401
 import json
+from pathlib import Path
 import socket
 import threading
 import time
@@ -90,7 +91,10 @@ class TestBrowserUX(unittest.TestCase):
         go_tab(page, "queue")
         page.focus("#tab-btn-queue")
         page.keyboard.press("ArrowRight")
+        page.wait_for_selector("#tab-history:not(.hidden)")
+        page.keyboard.press("ArrowRight")
         page.wait_for_selector("#tab-matching:not(.hidden)")
+        page.keyboard.press("ArrowLeft")
         page.keyboard.press("ArrowLeft")
         page.wait_for_selector("#tab-queue:not(.hidden)")
 
@@ -454,71 +458,6 @@ class TestBrowserUX(unittest.TestCase):
         page.keyboard.press("/")
         self.assertEqual(page.evaluate("document.activeElement.id"), "global-search-input")
 
-    def test_effect_modes_apply_persist_and_switch_features_off(self):
-        page = self.open_page()
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "subtle")             # calm by default
-        page.evaluate("() => { setFxChoice('full'); }")
-        self.assertTrue(page.evaluate("document.body.classList.contains('fx-full')"))
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('canvas.fx-net')).display"), "block")
-        page.evaluate("() => { setFxChoice('off'); }")
-        self.assertEqual(page.evaluate("getComputedStyle(document.getElementById('fx-aurora')).display"), "none")
-        self.assertEqual(page.evaluate("getComputedStyle(document.querySelector('canvas.fx-net')).display"), "none")
-        page.reload(wait_until="networkidle")
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "off")                # remembered
-        go_tab(page, "settings")
-        self.assertTrue(page.is_checked("input[name=fx][value=off]"))
-        page.check("input[name=fx][value=subtle]")
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "subtle")
-
-    def test_windows_reduce_motion_overrides_the_chosen_effect_mode(self):
-        ctx = self.browser.new_context(reduced_motion="reduce")
-        ctx.add_init_script("try{localStorage.setItem('studio.fx','\"full\"')}catch(e){}")
-        page = ctx.new_page()
-        page.goto(f"http://127.0.0.1:{self.port}/?token={SESSION_AUTH_TOKEN}", wait_until="networkidle")
-        self.addCleanup(ctx.close)
-        self.assertEqual(page.evaluate("document.body.dataset.fx"), "off")
-        self.assertEqual(page.evaluate("getComputedStyle(document.getElementById('fx-aurora')).display"), "none")
-        page.evaluate("document.getElementById('wizard-modal') && document.getElementById('wizard-modal').classList.add('hidden')")
-        go_tab(page, "settings")
-        self.assertTrue(page.is_visible("#fx-reduced-hint"))
-
-    def test_number_ticker_always_lands_on_the_exact_value(self):
-        page = self.open_page()
-        page.evaluate("() => { setFxChoice('full'); }")
-        page.evaluate("() => { const e = document.getElementById('dash-completed'); e.dataset.value = '0'; e.textContent = '0'; FX.tick(e, 250, 300); }")
-        page.wait_for_function("() => document.getElementById('dash-completed').textContent === '250'")
-        page.evaluate("() => { setFxChoice('off'); const e = document.getElementById('dash-completed'); FX.tick(e, 7); }")
-        self.assertEqual(page.inner_text("#dash-completed"), "7")                            # instant when effects are off
-
-    def test_cover_art_colour_drives_the_accent_and_resets(self):
-        page = self.open_page()
-        accent = page.evaluate("""async () => {
-            const c = document.createElement('canvas'); c.width = c.height = 8;
-            const g = c.getContext('2d'); g.fillStyle = '#d8203a'; g.fillRect(0, 0, 8, 8);
-            await FX.coverAccent(c.toDataURL());
-            return document.documentElement.style.getPropertyValue('--np');
-        }""")
-        r, gch, b = [int(x) for x in accent.split()]
-        self.assertTrue(r > 150 and r > gch + 60 and r > b + 40, accent)                      # a vivid red, not the default green
-        page.evaluate("() => { FX.resetAccent(); }")
-        self.assertEqual(page.evaluate("document.documentElement.style.getPropertyValue('--np')"), "")
-
-    def test_spotlight_follows_the_pointer_on_cards(self):
-        page = self.open_page()
-        box = page.locator("#tab-dashboard .fx-card").first.bounding_box()
-        page.mouse.move(box["x"] + 40, box["y"] + 30)
-        page.mouse.move(box["x"] + 60, box["y"] + 35)
-        page.wait_for_function("() => { const c = document.querySelector('#tab-dashboard .fx-card'); return c.style.getPropertyValue('--mx') !== ''; }")
-        self.assertRegex(page.evaluate("document.querySelector('#tab-dashboard .fx-card').style.getPropertyValue('--mx')"), r"^[\d.]+px$")
-
-    def test_decorations_do_not_leak_into_the_accessibility_tree_or_layout(self):
-        page = self.open_page()
-        self.assertEqual(page.get_attribute("#fx-aurora", "aria-hidden"), "true")
-        self.assertEqual(page.get_attribute("canvas.fx-net", "aria-hidden"), "true")
-        # the screen-reader-only label of the Home box must stay hidden (regression: a style rule un-hid it)
-        box = page.locator("label[for=home-quick-input]").bounding_box()
-        self.assertTrue(box is None or (box["width"] <= 2 and box["height"] <= 2), box)
-
     def test_wizard_stepper_moves_forward_and_back_with_progress(self):
         page = self.open_page()
         page.evaluate("() => { openWizardModal(); }")
@@ -564,6 +503,136 @@ class TestBrowserUX(unittest.TestCase):
         self.assertTrue(page.evaluate("document.querySelectorAll('#lib-table-body .skeleton').length > 0"))
         page.wait_for_function("() => document.querySelectorAll('#lib-table-body .skeleton').length === 0")
 
+    def test_diagnostics_shows_live_log_lines_from_the_server(self):
+        from src.web.state import logger as studio_logger
+        page = self.open_page()
+        go_tab(page, "logs")
+        marker = f"live-log-probe-{time.time_ns()}"
+        page.wait_for_timeout(600)                                       # let the EventSource connect
+        studio_logger.warning(marker)
+        page.wait_for_function("(m) => document.getElementById('log-terminal').textContent.includes(m)", arg=marker, timeout=8000)
+        self.assertIn("WARNING", page.inner_text("#log-terminal").upper())
+        page.fill("#log-search-input", "no-such-text-xyz")
+        page.dispatch_event("#log-search-input", "input")
+        page.wait_for_function("() => !document.getElementById('log-terminal').textContent.includes('live-log-probe')")
+
+    def test_rules_screen_create_preview_apply_and_undo(self):
+        import shutil
+        from src.config_loader import get_downloads_path
+        from src.db import get_db_connection
+        folder = get_downloads_path() / "ui_rules"
+        folder.mkdir(parents=True, exist_ok=True)
+        f = folder / "ui_loose.mp3"
+        f.write_bytes(b"ID3" + bytes(80))
+        conn = get_db_connection()
+        with conn:
+            conn.execute("""INSERT OR REPLACE INTO library_files (path, filename, folder, title, artist, album, genre, format, duration_sec, bitrate_kbps)
+                            VALUES (?,?,?,?,?,?,?,?,?,?)""", (str(f.resolve()), f.name, str(folder), "UiRuleSong", "UiRuleArtist", "UiRuleAlbum", "Jazz", "mp3", 100, 320))
+        self.addCleanup(lambda: shutil.rmtree(folder, ignore_errors=True))
+        self.addCleanup(lambda: (conn.execute("DELETE FROM library_files WHERE title='UiRuleSong'"), conn.execute("DELETE FROM organization_rules WHERE name LIKE 'UI:%'"), conn.commit()))
+
+        page = self.open_page()
+        go_tab(page, "rules")
+        page.wait_for_selector("#rules-list li")
+        page.click("text=New rule")
+        page.fill("#rule-name", "UI: jazz")
+        page.select_option("#rule-cond-type", "genre_contains")
+        page.fill("#rule-cond-value", "jazz")
+        page.fill("#rule-action-value", "Sorted/{artist}/{title}.{ext}")
+        page.click("#rule-form button[type=submit]")
+        page.wait_for_selector("#rules-list li:has-text('UI: jazz')")
+        # a bad pattern shows the server's explanation inline and keeps the form open
+        page.click("text=New rule")
+        page.fill("#rule-name", "UI: bad")
+        page.fill("#rule-cond-value", "x")
+        page.fill("#rule-action-value", "../escape/{title}.{ext}")
+        page.click("#rule-form button[type=submit]")
+        page.wait_for_selector("#rule-form-error:not(.hidden)")
+        self.assertIn("relative", page.inner_text("#rule-form-error"))
+        page.click("#rule-form >> text=Cancel")
+
+        page.click("#btn-rules-preview")
+        page.wait_for_selector("#rules-preview-body tr:has-text('ui_loose.mp3')")
+        self.assertTrue(f.exists())                                                  # previewing never moves anything
+        self.assertTrue(page.is_enabled("#btn-rules-apply"))
+        page.click("#btn-rules-apply")
+        page.wait_for_selector("#ui-dialog:not(.hidden)")
+        page.click("#ui-dialog-ok")
+        page.wait_for_function("() => !!document.querySelector('#rules-batches button')")
+        self.assertFalse(f.exists())
+        moved = folder.parent / "Sorted" / "UiRuleArtist" / "UiRuleSong.mp3"
+        self.addCleanup(lambda: shutil.rmtree(folder.parent / "Sorted", ignore_errors=True))
+        self.assertTrue(moved.exists())
+        page.click("#rules-batches button:has-text('Undo')")
+        page.click("#ui-dialog-ok")
+        page.wait_for_function("() => document.querySelector('#rules-batches').textContent.includes('Undone')")
+        self.assertTrue(f.exists())                                                  # one click put it back
+
+    def test_hooks_can_be_added_and_removed_and_unsafe_targets_explain_themselves(self):
+        page = self.open_page()
+        go_tab(page, "rules")
+        page.fill("#hook-name", "UI: ping")
+        page.fill("#hook-target", "https://example.com/hook")
+        page.click("#hook-form button[type=submit]")
+        page.wait_for_selector("#hooks-list li:has-text('UI: ping')")
+        page.fill("#hook-name", "UI: copy")
+        page.select_option("#hook-action", "copy_to_folder")
+        self.assertIn("Folder", page.inner_text("#hook-target-label"))
+        page.fill("#hook-target", "C:\\Users\\Public\\Music")
+        page.click("#hook-form button[type=submit]")
+        page.wait_for_selector("#hook-form-error:not(.hidden)")
+        self.assertIn("inside the application", page.inner_text("#hook-form-error"))
+        page.click("#hooks-list li:has-text('UI: ping') button")
+        page.click("#ui-dialog-ok")
+        page.wait_for_function("() => !document.getElementById('hooks-list').textContent.includes('UI: ping')")
+
+    def test_failure_messages_are_translated_into_plain_language_with_an_action(self):
+        page = self.open_page()
+        cases = {
+            "Spotify direct audio stream retrieval is unsupported. Protected DRM full-track streams cannot be downloaded.": ("signin", "Not signed in"),
+            "Spotify Audio Key Error: Full direct stream extraction requires a Spotify Premium account.": ("premium", "Premium"),
+            "HTTP 429 Too Many Requests": ("rate", "slow down"),
+            "Verification failure: bad checksum": ("verify", "check"),
+            "ffmpeg exited with code 1": ("ffmpeg", "Converting"),
+            "Failed to load stream from Spotify: boom": ("stream", "wouldn't provide"),
+            "Connection timed out": ("network", "Network"),
+        }
+        for raw, (key, fragment) in cases.items():
+            got = page.evaluate("(raw) => { const h = explainError(raw); return h ? [h.key, h.short, !!h.action] : null; }", raw)
+            self.assertIsNotNone(got, raw)
+            self.assertEqual(got[0], key, raw)
+            self.assertIn(fragment.lower(), got[1].lower(), raw)
+            self.assertTrue(got[2])
+        self.assertIsNone(page.evaluate("explainError('something totally unexpected')"))      # unknown text is shown as-is
+
+    def test_premium_failures_show_a_sign_in_banner_only_when_it_helps(self):
+        page = self.open_page()
+        go_tab(page, "queue")
+        page.evaluate("""() => { cachedQueueJobs = [{id:'p1', track_id:'t1', title:'Locked', artists:['A'], album:'', collection_name:'C', stage:'FAILED', status:'FAILED', progress:0,
+            error:'Spotify Audio Key Error: Full direct stream extraction requires a Spotify Premium account.'}];
+            window.__auth = {authenticated:false, accountType:'unknown', username:'', credentialsExist:false}; applyQueueFiltersAndRender(); renderQueueAlerts(); }""")
+        page.wait_for_selector("#queue-alert:not(.hidden)")
+        self.assertIn("1 download can't start", page.inner_text("#queue-alert"))
+        self.assertIn("Needs Spotify Premium", page.inner_text("#master-queue-body"))        # row says it plainly, raw text stays in the tooltip
+        page.click("#queue-alert button:has-text(\"Sign in\")")
+        page.wait_for_selector("#login-modal:not(.hidden)")
+        page.keyboard.press("Escape")
+        page.evaluate("() => { window.__auth = {authenticated:true, accountType:'free', username:'x'}; renderQueueAlerts(); }")
+        self.assertIn("Free Spotify account", page.inner_text("#queue-alert"))
+        page.evaluate("() => { window.__auth = {authenticated:true, accountType:'premium', username:'x'}; renderQueueAlerts(); }")
+        self.assertTrue(page.evaluate("document.getElementById('queue-alert').classList.contains('hidden')"))   # Premium: nothing to fix here
+
+    def test_job_details_explain_what_to_do_and_the_button_acts(self):
+        page = self.open_page()
+        go_tab(page, "queue")
+        page.evaluate("""() => { cachedQueueJobs = [{id:'p2', track_id:'t2', title:'Slow', artists:['A'], album:'', collection_name:'C', stage:'FAILED', status:'FAILED', progress:0,
+            error:'HTTP 429 Too Many Requests'}]; openQueueJobDetailsModal('p2'); }""")
+        page.wait_for_selector("#modal-queue-job-details:not(.hidden)")
+        self.assertIn("Too many requests", page.inner_text("#detail-job-help-title"))
+        self.assertIn("429", page.inner_text("#detail-job-error-text"))                       # the raw text is still there for support
+        page.click("#detail-job-help-action")
+        page.wait_for_selector("#tab-settings:not(.hidden)")
+
     def test_player_remembers_volume_and_has_tri_state_repeat(self):
         page = self.open_page()
         page.evaluate("() => { setAudioVolume(0.4); }")
@@ -598,6 +667,32 @@ class TestBrowserUX(unittest.TestCase):
             page.click("th[data-lib-sort=title]")
         self.assertEqual(page.get_attribute("th[data-lib-sort=title]", "aria-sort"), "descending")
 
+    def test_the_interface_stays_quiet_no_decoration_no_loops_no_heavy_type(self):
+        """The visual layer is restrained: no ambient background, no gradients or looping motion on idle screens,
+        nothing heavier than weight 600, and no shouting in capitals (short codes such as MP3 are fine)."""
+        page = self.open_page()
+        self.assertEqual(page.locator("#fx-aurora, canvas").count(), 0)
+        audit = """() => {
+          const out = {heavy: [], looping: [], gradient: [], shouting: []};
+          for (const el of document.querySelectorAll('body *')) {
+            const r = el.getBoundingClientRect();
+            if (!r.width || !r.height || el.closest('.hidden,[hidden]')) continue;
+            const cs = getComputedStyle(el), tag = el.tagName.toLowerCase() + (el.id ? '#' + el.id : '');
+            if (el.childNodes.length && Array.from(el.childNodes).some(n => n.nodeType === 3 && n.textContent.trim()) && parseInt(cs.fontWeight) > 600) out.heavy.push(tag + '.' + el.className.toString().slice(0, 50));
+            if (cs.animationName !== 'none' && cs.animationIterationCount.includes('infinite') && !el.closest('.skeleton,.animate-spin,svg')) out.looping.push(tag);
+            if (cs.backgroundImage.includes('gradient') && !el.classList.contains('skeleton')) out.gradient.push(tag);
+            const own = Array.from(el.childNodes).filter(n => n.nodeType === 3).map(n => n.textContent.trim()).join(' ');
+            if (cs.textTransform === 'uppercase' && own.length > 4) out.shouting.push(tag + ':' + own.slice(0, 20));
+          }
+          return out;
+        }"""
+        for tab in ("dashboard", "library", "settings", "plugins"):
+            go_tab(page, tab)
+            page.wait_for_timeout(400)
+            found = page.evaluate(audit)
+            self.assertEqual(found, {"heavy": [], "looping": [], "gradient": [], "shouting": []}, f"{tab}: {found}")
+        self.assertEqual(self.real_errors(), [])
+
     def test_toast_errors_persist_and_can_be_copied(self):
         page = self.open_page()
         page.evaluate("UI.toast('Something failed: details here', 'error')")
@@ -615,6 +710,363 @@ class TestBrowserUX(unittest.TestCase):
         page.route("**/api/status**", lambda r: r.abort())
         page.evaluate("() => { fetchStatus(); UI.api('/api/status', {quiet:true}).catch(()=>{}); UI.api('/api/status', {quiet:true}).catch(()=>{}); }")
         page.wait_for_function("() => !document.getElementById('conn-banner').classList.contains('hidden')")
+
+    # ------------------------------------------------------------------ audit batch: health, cleanup, library, search, backups, history
+    def test_health_tiles_are_real_buttons_that_lead_to_where_you_fix_things(self):
+        page = self.open_page()
+        go_tab(page, "intelligence")
+        for tile in ("drill-missing-tags", "drill-missing-art", "drill-unreadable", "drill-exact-dups", "drill-probable-dups", "drill-anomalies"):
+            self.assertEqual(page.evaluate(f"document.getElementById('{tile}').closest('button') !== null"), True, tile)
+        for stat in ("intel-total-tracks", "intel-total-artists", "intel-total-size", "intel-total-hours", "intel-health-score"):
+            self.assertTrue(page.locator(f"#{stat}").count() == 1, stat)
+        self.assertIn("Review in Cleanup", page.locator("#drill-exact-dups").locator("xpath=..").inner_text())
+        self.assertFalse(page.evaluate("() => document.documentElement.scrollWidth > document.documentElement.clientWidth"))
+        page.locator("#drill-exact-dups").click()
+        page.wait_for_selector("#tab-optimizer:not(.hidden)")
+        self.assertEqual(page.locator("#tab-btn-optimizer").get_attribute("aria-selected"), "true")
+        self.assertEqual(self.real_errors(), [])
+
+    def test_cleanup_has_one_duplicate_workflow_and_points_to_sound_matching(self):
+        page = self.open_page()
+        go_tab(page, "optimizer")
+        self.assertEqual(page.locator("#tab-optimizer >> text=Scan Exact (SHA-256)").count(), 0)          # the second, duplicate set of scan buttons is gone
+        self.assertEqual(page.locator("#tab-optimizer >> text=Rescan current mode").count(), 1)
+        page.click("#tab-optimizer >> text=Compare by sound instead")
+        page.wait_for_selector("#tab-quality_lab:not(.hidden)")
+        self.assertEqual(self.real_errors(), [])
+
+    def test_library_sheds_low_priority_columns_as_the_window_narrows(self):
+        page = self.open_page(size=(1360, 860))
+        go_tab(page, "library")
+        page.wait_for_selector("#lib-table-body tr")
+        head = lambda name: page.locator(f"#lib-head-row th:has-text('{name}')").first.is_visible()   # noqa: E731
+        self.assertTrue(head("Album") and head("Format") and head("Identified issues"))
+        page.set_viewport_size({"width": 1100, "height": 800})
+        self.assertFalse(head("Identified issues"))
+        self.assertTrue(head("Album"))
+        page.set_viewport_size({"width": 900, "height": 800})
+        self.assertFalse(head("Album"))
+        self.assertTrue(head("Format"))
+        page.set_viewport_size({"width": 760, "height": 800})
+        self.assertFalse(head("Format"))
+        self.assertTrue(head("Title") and head("Artist"))                                                     # the essentials always stay
+        self.assertTrue(page.locator("#lib-table-body tr").first.locator("td:visible").count() >= 3)
+        self.assertEqual(self.real_errors(), [])
+
+    def test_preferences_search_filters_sections_and_fields(self):
+        page = self.open_page()
+        go_tab(page, "settings")
+        page.wait_for_selector("#settings-search")
+        visible = lambda sec: page.locator(f"#{sec}").is_visible()   # noqa: E731
+        self.assertTrue(visible("set-audio") and visible("set-account") and visible("set-maintenance"))
+        page.fill("#settings-search", "bitrate")
+        self.assertTrue(visible("set-audio"))
+        self.assertFalse(visible("set-account"))
+        self.assertFalse(visible("set-appearance"))
+        self.assertTrue(page.locator("#cfg-bitrate").is_visible())
+        self.assertFalse(page.locator("#cfg-format").is_visible())                                           # only the matching field stays
+        self.assertFalse(page.locator("#settings-index a[href='#set-account']").is_visible())
+        page.fill("#settings-search", "appearance")                                                          # a section title keeps the whole section
+        self.assertTrue(visible("set-appearance"))
+        self.assertFalse(visible("set-audio"))
+        page.fill("#settings-search", "zzzzqq")
+        self.assertTrue(page.locator("#settings-search-empty").is_visible())
+        self.assertIn("zzzzqq", page.locator("#settings-search-empty").inner_text())
+        page.fill("#settings-search", "")
+        self.assertTrue(visible("set-audio") and visible("set-account") and visible("set-maintenance"))
+        self.assertTrue(page.locator("#cfg-format").is_visible())
+        self.assertFalse(page.locator("#settings-search-empty").is_visible())
+        self.assertEqual(self.real_errors(), [])
+
+    def test_backups_can_be_listed_and_a_restore_prepared_then_cancelled(self):
+        client = app.test_client()
+        created = client.post("/api/backups/create").get_json()
+        self.assertTrue(created["success"], created)
+        self.addCleanup(lambda: client.post("/api/backups/restore/cancel"))
+        self.addCleanup(lambda: Path(created["path"]).unlink(missing_ok=True))
+        page = self.open_page()
+        go_tab(page, "settings")
+        page.wait_for_selector("#backup-list li button")
+        self.assertIn(Path(created["path"]).name, page.locator("#backup-list").inner_text())
+        self.assertFalse(page.locator("#restore-banner").is_visible())
+        page.locator("#backup-list li", has_text=Path(created["path"]).name).locator("text=Restore").click()
+        page.wait_for_selector("#ui-dialog:not(.hidden)")
+        self.assertIn("saved first", page.locator("#ui-dialog").inner_text())
+        self.assertEqual(page.evaluate("document.activeElement.id"), "ui-dialog-cancel")                    # Enter cannot start it by accident
+        page.click("#ui-dialog-ok")
+        page.wait_for_selector("#restore-banner:not(.hidden)")
+        self.assertIn("Close Spotify Downloader Studio and open it again", page.locator("#restore-banner").inner_text())
+        self.assertEqual(client.get("/api/backups/list").get_json()["pending"]["source"], Path(created["path"]).name)
+        page.click("#restore-banner >> text=Cancel restore")
+        page.wait_for_function("() => document.getElementById('restore-banner').classList.contains('hidden')")
+        self.assertIsNone(client.get("/api/backups/list").get_json()["pending"])
+        self.assertEqual(self.real_errors(), [])
+
+    def test_history_lists_finished_downloads_searches_and_queues_again(self):
+        import time
+        from src.db import get_db_connection
+        conn = get_db_connection()
+        now = time.time()
+        with conn:
+            conn.execute("DELETE FROM jobs WHERE id LIKE 'uihist_%'")
+            for i, (title, artists, status, err) in enumerate([("Hist Alpha", "Band One", "COMPLETED", ""), ("Hist Beta", "Band Two", "FAILED", "Failed to load stream"), ("Hist Gamma", "Band One", "CANCELLED", "")]):
+                conn.execute("INSERT INTO jobs (id, track_id, title, artists, album, status, error, added_at, completed_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                             (f"uihist_{i}", f"uih_{i}", title, artists, "Hist Album", status, err, now - i, now - i))
+        self.addCleanup(lambda: (conn.execute("DELETE FROM jobs WHERE id LIKE 'uihist_%'"), conn.commit()))
+        page = self.open_page()
+        go_tab(page, "history")
+        page.wait_for_selector("#history-list li >> text=Hist Alpha")
+        self.assertEqual(page.locator("#tab-btn-history").get_attribute("aria-selected"), "true")
+        self.assertIn("download", page.locator("#history-count").inner_text())
+        page.fill("#history-search", "Band Two")
+        page.wait_for_function("() => document.querySelectorAll('#history-list li').length === 1")
+        self.assertIn("Hist Beta", page.locator("#history-list").inner_text())
+        self.assertIn("wouldn't provide the audio", page.locator("#history-list").inner_text())                 # failure explained, not the raw text
+        page.fill("#history-search", "")
+        page.select_option("#history-status", "CANCELLED")
+        page.wait_for_function("() => document.querySelectorAll('#history-list li').length === 1 && document.querySelector('#history-list').innerText.includes('Hist Gamma')")
+        page.fill("#history-search", "nothing-like-this")
+        page.wait_for_selector("#history-list >> text=Nothing in the history matches that")
+        page.fill("#history-search", "")
+        page.select_option("#history-status", "")
+        page.wait_for_selector("#history-list li >> text=Hist Alpha")
+        sent = []
+        page.route("**/api/history/redownload", lambda r: (sent.append(r.request.post_data), r.fulfill(status=200, content_type="application/json", body='{"success": true}')))
+        page.locator("#history-list li", has_text="Hist Alpha").locator("text=Download again").click()
+        page.wait_for_selector("#toast-container .toast-success >> text=Added to the queue")
+        self.assertEqual(json.loads(sent[0]), {"job_id": "uihist_0"})
+        self.assertEqual(self.real_errors(), [])
+
+    # ------------------------------------------------------------------ feature batch: cleanup, auto-fix, schedule, plugins, support
+    def _wav(self, path, frames=800):
+        import wave
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(8000)
+            w.writeframes(b"\x00\x00" * frames)
+
+    def _confirm(self, page):
+        page.wait_for_selector("#ui-dialog:not(.hidden)")
+        page.click("#ui-dialog-ok")
+
+    def test_duplicate_cleanup_plans_moves_aside_and_can_be_undone(self):
+        import shutil
+        from src.config_loader import get_downloads_path
+        from src.db import get_db_connection
+        root = get_downloads_path() / "ui_dedup"
+        keep, drop = root / "Dedup UI Song.wav", root / "deeper" / "folder" / "Dedup UI Song copy.wav"
+        for f in (keep, drop):
+            self._wav(f)
+        conn = get_db_connection()
+        with conn:
+            for f in (keep, drop):
+                conn.execute("""INSERT OR REPLACE INTO library_files (path, filename, folder, title, artist, album, duration_sec, format, size_bytes, sha256, has_artwork, bitrate_kbps, tag_status)
+                                VALUES (?,?,?,?,?,?,?,?,?,?,1,0,'VALID')""", (str(f), f.name, str(f.parent), "Dedup UI Song", "Dedup Artist", "A", 1.0, "wav", f.stat().st_size, "d" * 64))
+
+        def cleanup():
+            shutil.rmtree(root, ignore_errors=True)
+            shutil.rmtree(get_downloads_path() / "_duplicates_backup", ignore_errors=True)
+            with conn:
+                conn.execute("DELETE FROM library_files WHERE path LIKE '%ui_dedup%'")
+                conn.execute("DELETE FROM organize_history WHERE original_path LIKE '%ui_dedup%'")
+        self.addCleanup(cleanup)
+
+        page = self.open_page()
+        go_tab(page, "optimizer")
+        page.click("#btn-dedup-plan")
+        page.wait_for_selector("#dedup-plan:not(.hidden) >> text=Dedup UI Song")
+        self.assertIn("Identical file", page.locator("#dedup-plan").inner_text())
+        page.evaluate("() => document.querySelectorAll('.dedup-group').forEach((cb) => { cb.checked = cb.closest('li').innerText.includes('Dedup UI Song'); cb.dispatchEvent(new Event('change', {bubbles: true})); })")
+        self.assertIn("Move 1 file aside", page.locator("#btn-dedup-apply").inner_text())
+        page.click("#btn-dedup-apply")
+        self._confirm(page)
+        page.wait_for_selector("#toast-container >> text=Moved 1 duplicate aside")
+        self.assertTrue(keep.exists())
+        self.assertFalse(drop.exists())
+        page.wait_for_selector("#btn-dedup-undo:not(.hidden)")
+        page.click("#btn-dedup-undo")
+        page.wait_for_selector("#toast-container >> text=Restored 1 file")
+        self.assertTrue(drop.exists())
+        self.assertEqual(self.real_errors(), [])
+
+    def test_autofix_looks_up_reviews_and_writes_tags(self):
+        import shutil
+        from unittest.mock import patch
+        from mutagen.wave import WAVE
+        from src.config_loader import get_downloads_path
+        from src.db import get_db_connection
+        from src.metadata_enricher import MetadataEnricher, MusicBrainzClient
+        root = get_downloads_path() / "ui_autofix"
+        wav = root / "Blue Monday.wav"
+        self._wav(wav, 4000)
+        conn = get_db_connection()
+        with conn:
+            conn.execute("""INSERT OR REPLACE INTO library_files (path, filename, folder, title, artist, album, duration_sec, format, size_bytes, has_artwork, tag_status)
+                            VALUES (?,?,?,?,?,?,?,?,?,0,'MISSING')""", (str(wav), wav.name, str(root), "Blue Monday", "Unknown Artist", "Unknown Album", 0.5, "wav", wav.stat().st_size))
+
+        def cleanup():
+            shutil.rmtree(root, ignore_errors=True)
+            with conn:
+                conn.execute("DELETE FROM library_files WHERE path LIKE '%ui_autofix%'")
+        self.addCleanup(cleanup)
+
+        def fake_search(title, artist=""):
+            if title != "Blue Monday":
+                return []
+            return [{"id": "r", "score": 100, "title": "Blue Monday", "length": 500,
+                     "artist-credit": [{"name": "New Order", "joinphrase": ""}],
+                     "releases": [{"id": "11111111-2222-3333-4444-555555555555", "title": "Power, Corruption & Lies", "date": "1983-05-02", "status": "Official",
+                                   "track-count": 8, "release-group": {"primary-type": "Album"}, "media": [{"track": [{"number": "7"}]}]}]}]
+        with patch.object(MusicBrainzClient, "search_recordings", fake_search), patch.object(MusicBrainzClient, "cover_available", return_value=False), \
+                patch.object(MusicBrainzClient, "min_interval", 0):
+            page = self.open_page()
+            go_tab(page, "intelligence")
+            page.select_option("#autofix-filter", "missing_tags")
+            page.select_option("#autofix-limit", "200")
+            page.click("#btn-autofix-start")
+            page.wait_for_selector("#autofix-results:not(.hidden) >> text=New Order")
+            results = page.locator("#autofix-results").inner_text()
+            self.assertIn("fills a gap", results)
+            self.assertIn("Power, Corruption & Lies", results)
+            self.assertIn("1983", results)
+            self.assertEqual(page.locator("#autofix-results .autofix-opt:checked").count(), 4)          # gaps are pre-ticked
+            page.uncheck("#autofix-results .autofix-opt[data-field='year']")
+            self.assertIn("3 changes in 1 file", page.locator("#autofix-count").inner_text())
+            page.click("#btn-autofix-apply")
+            self._confirm(page)
+            page.wait_for_selector("#toast-container >> text=Updated 1 file")
+        tags = WAVE(str(wav)).tags
+        self.assertEqual(str(tags["TPE1"]), "New Order")
+        self.assertEqual(str(tags["TALB"]), "Power, Corruption & Lies")
+        self.assertNotIn("TDRC", tags)                                                                     # the box that was unticked was not written
+        self.assertIn("No suggestions", page.locator("#autofix-results").inner_text())
+        MetadataEnricher.cancel()
+        self.assertEqual(self.real_errors(), [])
+
+    def test_schedule_settings_and_the_queue_note(self):
+        from datetime import datetime, timedelta
+        from src.download_schedule import DownloadSchedule
+        from src.settings_service import SettingsService
+        before = SettingsService.get_all()["schedule"]
+        self.addCleanup(lambda: (SettingsService.update({"schedule": before}), DownloadSchedule.set_override(False)))
+        page = self.open_page()
+        go_tab(page, "settings")
+        page.wait_for_selector("#set-schedule")
+        self.assertTrue(page.locator("#schedule-fields").evaluate("el => el.classList.contains('opacity-50')"))      # off: fields look inactive
+        page.check("#cfg-schedule-enabled")
+        later = datetime.now() + timedelta(hours=2)
+        page.fill("#cfg-schedule-start", later.strftime("%H:%M"))
+        page.fill("#cfg-schedule-end", (later + timedelta(hours=1)).strftime("%H:%M"))
+        click = lambda day: page.locator(f".schedule-day[value='{day}']").evaluate("el => el.click()")   # noqa: E731  (the sticky bars can cover it)
+        for day in ("tue", "wed", "thu", "fri", "sat", "sun"):
+            click(day)
+        self.assertEqual(page.input_value("#cfg-schedule-days"), "mon")
+        click("mon")
+        self.assertEqual(page.input_value("#cfg-schedule-days"), "")
+        self.assertFalse(page.locator(".schedule-day[value='mon']").is_checked())                            # the box stays as clicked
+        self.assertTrue(page.locator("#cfg-days-error").is_visible())
+        for day in ("mon", "tue", "wed", "thu", "fri", "sat", "sun"):
+            click(day)
+        self.assertEqual(page.input_value("#cfg-schedule-days"), "mon,tue,wed,thu,fri,sat,sun")
+        self.assertFalse(page.locator("#cfg-days-error").is_visible())
+        page.click("#btn-settings-save")
+        page.wait_for_selector("#toast-container .toast-success")
+        saved = SettingsService.get_all()["schedule"]
+        self.assertTrue(saved["enabled"])
+        self.assertEqual(saved["start"], later.strftime("%H:%M"))
+
+        go_tab(page, "queue")
+        page.wait_for_selector("#queue-schedule-note:not(.hidden) >> text=waiting for the schedule")
+        page.click("#queue-schedule-note >> text=Download now anyway")
+        page.wait_for_selector("#queue-schedule-note >> text=switched off for now")
+        self.assertTrue(DownloadSchedule.override)
+        page.click("#queue-schedule-note >> text=Follow the schedule again")
+        page.wait_for_selector("#queue-schedule-note >> text=waiting for the schedule")
+        self.assertFalse(DownloadSchedule.override)
+        self.assertEqual(self.real_errors(), [])
+
+    def test_plugins_screen_built_in_switches_packs_secrets_test_and_import(self):
+        from unittest.mock import patch
+        from src.db import get_db_connection
+        from src.plugin_engine import PluginEngine
+        from src.settings_service import SettingsService
+        conn = get_db_connection()
+        with conn:
+            conn.execute("DELETE FROM plugin_packs")
+        before = SettingsService.get_all()["audio"]["embed_lyrics"]
+        self.addCleanup(lambda: (SettingsService.update({"audio": {"embed_lyrics": before}}), conn.execute("DELETE FROM plugin_packs"), conn.commit()))
+        page = self.open_page()
+        go_tab(page, "plugins")
+        page.wait_for_selector("#plugins-packs article")
+        self.assertEqual(page.locator("#tab-btn-plugins").get_attribute("aria-selected"), "true")
+        self.assertGreaterEqual(page.locator("#plugins-packs article").count(), 6)
+        self.assertGreaterEqual(page.locator("#plugins-builtin li").count(), 6)
+
+        switch = page.locator("#plugins-builtin li", has_text="Embed lyrics").locator("input")
+        switch.click()
+        for _ in range(50):                                                                               # the page saves it in the background
+            if SettingsService.get_all()["audio"]["embed_lyrics"] == (not before):
+                break
+            time.sleep(0.1)
+        self.assertEqual(SettingsService.get_all()["audio"]["embed_lyrics"], not before)
+
+        card = page.locator("#pack-ntfy-push")
+        self.assertIn("what it will do", card.inner_text().lower())
+        self.assertIn("the address you enter", card.inner_text())
+        card.locator("text=Turn on").click()
+        card.locator(".pack-error:not(.hidden)").wait_for()
+        self.assertIn("Fill in", card.locator(".pack-error").inner_text())
+        card.locator("[data-pack-field=topic]").fill("a-very-long-random-topic")
+        self.assertEqual(card.locator("[data-pack-field=topic]").get_attribute("type"), "password")           # a secret is never shown in clear
+        card.locator("text=Turn on").click()
+        page.wait_for_selector("#pack-ntfy-push >> text=Send a test")
+        self.assertEqual(page.locator("#pack-ntfy-push [data-pack-field=topic]").input_value(), "********")   # the page never gets it back
+        with patch.object(PluginEngine, "deliver", return_value="Delivered (HTTP 200)"):
+            page.locator("#pack-ntfy-push").locator("text=Send a test").click()
+            page.wait_for_selector("#pack-ntfy-push .pack-test:not(.hidden) >> text=Worked")
+        page.locator("#pack-ntfy-push").locator("text=Turn off").click()
+        page.wait_for_selector("#pack-ntfy-push >> text=Turn on")
+
+        mine = {"schema": 1, "id": "ui-import", "name": "UI import pack", "version": "0.1", "description": "From a file.",
+                "settings": [], "hooks": [{"event": "on_queue_finished", "action": "webhook", "target": "https://example.org/hook"}]}
+        page.set_input_files("#plugin-file-input", {"name": "pack.json", "mimeType": "application/json", "buffer": json.dumps(mine).encode()})
+        self._confirm(page)
+        page.wait_for_selector("#pack-ui-import >> text=Added by you")
+        self.assertIn("example.org", page.locator("#pack-ui-import").inner_text())                          # what it will contact is spelled out
+        page.set_input_files("#plugin-file-input", {"name": "bad.json", "mimeType": "application/json", "buffer": b"{not json"})
+        page.wait_for_selector("#toast-container .toast-error >> text=isn't valid JSON")
+        page.locator("#pack-ui-import").locator("text=Remove").click()
+        self._confirm(page)
+        page.wait_for_selector("#pack-ui-import", state="detached")
+        self.assertEqual(self.real_errors(), [])
+
+    def test_support_bundle_button_and_feed_shortcut(self):
+        import shutil
+        from src.diagnostics_service import DIAGNOSTICS_DIR
+        before = set(DIAGNOSTICS_DIR.glob("*.zip")) if DIAGNOSTICS_DIR.exists() else set()
+
+        def cleanup():
+            for z in (set(DIAGNOSTICS_DIR.glob("*.zip")) - before):
+                z.unlink(missing_ok=True)
+            if DIAGNOSTICS_DIR.exists() and not any(DIAGNOSTICS_DIR.iterdir()):
+                shutil.rmtree(DIAGNOSTICS_DIR, ignore_errors=True)
+        self.addCleanup(cleanup)
+        page = self.open_page()
+        go_tab(page, "logs")
+        page.click("text=Create support bundle")
+        page.wait_for_selector("#toast-container .toast-success >> text=Support bundle saved")
+        self.assertEqual(len(set(DIAGNOSTICS_DIR.glob("*.zip")) - before), 1)
+        self.assertTrue(page.locator("#toast-container .toast-action").count() >= 1)                       # "Show in folder"
+
+        go_tab(page, "settings")
+        page.wait_for_function("() => document.getElementById('cfg-update-feed-url') !== null")
+        page.click("text=Use this project's GitHub releases")
+        from src.version import RELEASE_FEED_URL
+        self.assertEqual(page.input_value("#cfg-update-feed-url"), RELEASE_FEED_URL)
+        self.assertFalse(page.locator("#settings-savebar").evaluate("el => el.classList.contains('is-clean')"))   # filled in, not saved
+        self.assertEqual(self.real_errors(), [])
 
 
 if __name__ == "__main__":

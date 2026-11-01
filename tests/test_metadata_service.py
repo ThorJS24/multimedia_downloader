@@ -143,7 +143,7 @@ class TestResolution(Base):
     def test_web_api_is_preferred_when_configured(self):
         self.svc.web_api = MagicMock()
         self.svc.web_api.has_web_api.return_value = True
-        self.svc.web_api.sp.track.return_value = {
+        self.svc.web_api.client.return_value.track.return_value = {
             "name": "API Song", "artists": [{"name": "API Artist"}], "track_number": 2, "disc_number": 1,
             "duration_ms": 123, "explicit": False, "external_ids": {"isrc": "USX"},
             "album": {"name": "API Album", "release_date": "2020-01-01", "total_tracks": 9,
@@ -155,7 +155,7 @@ class TestResolution(Base):
     def test_api_failure_falls_back_to_embed(self):
         self.svc.web_api = MagicMock()
         self.svc.web_api.has_web_api.return_value = True
-        self.svc.web_api.sp.track.side_effect = RuntimeError("403 premium required")
+        self.svc.web_api.client.return_value.track.side_effect = RuntimeError("403 premium required")
         with self.fetch({"/embed/track/meta_t_fb": embed_page(TRACK_ENTITY)}):
             self.assertEqual(self.svc.resolve_item("track", "meta_t_fb")["title"], "Song Name")
 

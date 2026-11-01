@@ -8,7 +8,7 @@ It resolves Spotify metadata, then retrieves audio. **Spotify links are download
 
 ## 🔒 Storage Isolation (Zero C: Drive Usage)
 
-This project has been configured to **strictly reside within this directory (`D:\mini-projects\Spotify_playlist_downloader`)**:
+The app is built to **stay strictly inside its own folder** (the project folder when run from source):
 - **Virtual Environment (`.venv/`)**: Python binaries and packages installed locally.
 - **Pip Cache (`.cache/pip/`)**: Package wheels and caches saved strictly in the project folder.
 - **Temporary Files (`temp/`)**: Decryption buffers, FFmpeg chunks, and audio transcoding temp files strictly mapped to `D:\...\temp`.
@@ -44,11 +44,11 @@ Optional switches, from a terminal: `--browser` (open in your web browser instea
 * **Security**: the app serves itself on a free local port protected by a per-run session token; the desktop window handles that for you.
 * **How it is organised** (five sidebar destinations; the sections inside each appear as tabs):
   * 🏠 **Home**: paste a link to start, see what is downloading and what failed (one-click Retry), jump back into your music.
-  * 📥 **Downloads**: *Add music* (review & add, or add without review), *Queue* (live progress, filters, bulk actions, undo), *Match lab* (see how the matcher scores real candidates).
-  * 🎧 **Library**: *Tracks* (sortable, with the built-in player), *Discover* (multi-source search), *Health*, *Quality*, *Releases*, *Cleanup* (duplicates and temp files).
-  * ⚙️ **Automation**: *Playlist sync*, *Artist monitor*, *Folder watcher*.
-  * 🔧 **Settings**: *Preferences* (every option, one save bar) and *Diagnostics* (live log stream).
-* **Look & feel**: dark, light or follow-Windows theme and adjustable visual effects (Full / Subtle / Off; Windows "reduce motion" is respected), album-art-tinted accents, collapsible sidebar.
+  * 📥 **Downloads**: *Add music* (review & add, or add without review), *Queue* (live progress, filters, bulk actions, undo), *History* (every finished download, searchable, with "Download again"), *Match lab* (see how the matcher scores real candidates).
+  * 🎧 **Library**: *Tracks* (sortable, with the built-in player), *Discover* (multi-source search), *Health* (one-glance score; every problem tile jumps to where you fix it, and **Fix tags & artwork automatically** looks missing details up on MusicBrainz / Cover Art Archive for you to review), *Quality*, *Releases*, *Cleanup* (duplicates and temp files, with a one-click "keep the best copy" plan you review and can undo).
+  * ⚙️ **Automation**: *Playlist sync*, *Artist monitor*, *Folder watcher*, *Rules & hooks*, *Plugins* (built-in feature switches and plugin packs such as Discord, Slack, ntfy and Home Assistant notifications; see `docs/plugins.md`).
+  * 🔧 **Settings**: *Preferences* (searchable, one save bar, download schedule, notifications and minimise-to-tray, database backups with restore) and *Diagnostics* (live log stream).
+* **Look & feel**: dark, light or follow-Windows theme, a quiet neutral palette with one green accent, tabular figures for sizes and counts, collapsible sidebar. No decorative effects: motion is limited to short feedback and one fade when a section opens (and none when Windows "reduce motion" is on).
 * **Command palette**: `Ctrl+K` jumps to any section, runs an action or finds and plays a song. Other shortcuts: `/` search, `Alt+1…5` destinations, `Space` play/pause, `?` for help.
 * **Safety nets**: confirmation dialogs for anything destructive, undo for queue removals and bulk reorganise, "Show in folder" after exports.
 
@@ -80,7 +80,8 @@ URL serving `{"version", "url", "sha256", "notes"}` (see `src/update_service.py`
 download (SHA-256 verified) and start the installer, which is only launched if it is validly code-signed.
 
 Logs are written to `logs/studio.log` (rotating, secrets redacted). Backups of the database go to
-`data/backups/`.
+`data/backups/`; Settings -> Backups & updates lists them and can restore one. A restore is prepared while the app is
+running and applied the next time you open it (the data it replaces is saved first as `studio_prerestore_*.db`).
 
 ---
 
@@ -142,7 +143,9 @@ Run the automated test suite verifying storage isolation, SQLite WAL mode, multi
 .\.venv\Scripts\python.exe tests/run_tests.py          # everything
 .\.venv\Scripts\python.exe tests/run_tests.py --fast   # no browser / spawned servers (~25 s)
 ```
-Static checks (both are clean): `python -m ruff check .` and `python -m mypy src`.
+Static checks (both are clean): `python -m ruff check .` and `python -m mypy` (checks function bodies too). The same checks and the tests run on every push through `.github/workflows/ci.yml`.
+
+`python tools/smoke_packaged.py --exe dist\SpotifyDownloader\SpotifyDownloader.exe` starts a built copy of the app and checks it over HTTP (use `--source` for the source tree). Releases are built from a version tag by `.github/workflows/release.yml`; see `docs/releasing.md`.
 
 Tests run against a throwaway data directory under `temp/` (never your real database, downloads or config) and clean it up on exit. The browser tests also need `playwright install chromium`.
 ```powershell

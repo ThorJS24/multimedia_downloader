@@ -1,11 +1,14 @@
 import io
 import json
+from pathlib import Path
 
 from flask import Response, jsonify, request, Blueprint
 
 from src.db import record_audit
+from src.download_schedule import DownloadSchedule
 from src.link_parser import LinkParser
 from src.match_engine import MatchCandidate, MatchEngine
+from src.repositories import JobRepository
 from src.staging_service import StagingService
 from src.web.state import logger, metadata_service, queue_manager, sync_engine
 
@@ -28,7 +31,7 @@ def import_links_file():
         return jsonify({"error": "No file uploaded"}), 400
     f = request.files["file"]
     content = f.read().decode("utf-8", errors="ignore")
-    parsed = LinkParser.parse_file_content(content, filename=f.filename)
+    parsed = LinkParser.parse_file_content(content, filename=f.filename or "")
     return jsonify({"links": [p.to_dict() for p in parsed], "total": len(parsed)})
 
 
@@ -59,6 +62,46 @@ def get_queue_snapshot():
     return resp.make_conditional(request)
 
 
+@bp.route("/api/history", methods=["GET"])
+def download_history():
+    """Finished downloads (including ones cleared from the queue), searchable, newest first."""
+    q = request.args.get("q", "").strip()
+    status = request.args.get("status", "").strip().upper()
+    limit = max(1, min(int(request.args.get("limit", 50) or 50), 200))
+    offset = max(0, int(request.args.get("offset", 0) or 0))
+    rows, total = JobRepository.history(q, status, limit, offset)
+    items = []
+    for r in rows:
+        out = r["output_path"] or ""
+        items.append({
+            "id": r["id"], "track_id": r["track_id"], "title": r["title"] or "", "artists": r["artists"] or "",
+            "album": r["album"] or "", "year": r["year"] or "", "duration_ms": r["duration_ms"] or 0,
+            "cover_url": r["cover_url"] or "", "status": r["status"], "error": r["error"] or "",
+            "collection_name": r["collection_name"] or "", "finished_at": r["completed_at"] or r["added_at"],
+            "output_path": out, "file_exists": bool(out) and Path(out).exists(),
+        })
+    return jsonify({"items": items, "total": total, "limit": limit, "offset": offset})
+
+
+@bp.route("/api/history/redownload", methods=["POST"])
+def history_redownload():
+    """Queue a past download again (same track, same metadata)."""
+    job_id = ((request.json or {}).get("job_id") or "").strip()
+    row = JobRepository.get(job_id) if job_id else None
+    if row is None:
+        return jsonify({"success": False, "error": "That download is no longer in the history"}), 404
+    if any(j.track_id == row["track_id"] and j.status in ("QUEUED", "ACTIVE") for j in queue_manager.jobs):
+        return jsonify({"success": False, "error": "That track is already waiting in the queue"}), 409
+    queue_manager.add_job({
+        "id": row["track_id"], "title": row["title"] or "", "artists": (row["artists"] or "Unknown").split(", "),
+        "album": row["album"] or "", "duration_ms": row["duration_ms"] or 0, "cover_url": row["cover_url"] or "",
+        "isrc": row["isrc"] or "", "year": row["year"] or "", "provider": row["provider"] or "spotify",
+        "provider_item_id": row["provider_item_id"] or row["track_id"], "canonical_url": row["canonical_url"] or "",
+    }, collection_id=row["collection_id"] or "", collection_name=row["collection_name"] or "")
+    record_audit("QUEUE", f"Queued '{row['title']}' again from the history")
+    return jsonify({"success": True})
+
+
 @bp.route("/api/queue/add", methods=["POST"])
 def queue_add():
     data = request.json or {}
@@ -72,6 +115,14 @@ def queue_add():
     added = queue_manager.add_batch(tracks, collection_id=collection_id, collection_name=collection_name)
     record_audit("QUEUE", f"Enqueued {added} tracks from '{collection_name or 'Direct'}'")
     return jsonify({"success": True, "added": added})
+
+
+@bp.route("/api/queue/schedule-override", methods=["POST"])
+def queue_schedule_override():
+    """'Download now anyway' / 'follow the schedule again'. Lasts until the app restarts."""
+    on = bool((request.json or {}).get("on"))
+    DownloadSchedule.set_override(on)
+    return jsonify({"success": True, "schedule": DownloadSchedule.describe()})
 
 
 @bp.route("/api/queue/pause", methods=["POST"])

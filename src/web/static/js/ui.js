@@ -102,7 +102,7 @@ const UI = (function () {
       <i data-lucide="${toastIcons[type]}" aria-hidden="true" class="w-4 h-4 mr-2.5 mt-0.5 shrink-0 stroke-[2.5]"></i>
       <span class="flex-1 break-words whitespace-pre-line select-text">${escapeHtml(text)}</span>
       <span class="toast-count hidden ml-2 px-1.5 rounded-full bg-black/25 text-2xs font-mono shrink-0"></span>
-      ${opts.action ? '<button type="button" class="toast-action ml-3 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-2xs font-bold shrink-0 cursor-pointer"></button>' : ""}
+      ${opts.action ? '<button type="button" class="toast-action ml-3 px-2.5 py-1 rounded-lg bg-white/15 hover:bg-white/25 text-2xs font-semibold shrink-0 cursor-pointer"></button>' : ""}
       <span class="flex items-center shrink-0 ml-2 -mr-1 -mt-0.5">
         ${text.length > 40 || type === "error" ? '<button type="button" aria-label="Copy message" title="Copy" class="toast-copy p-1 opacity-70 hover:opacity-100 cursor-pointer"><i data-lucide="copy" aria-hidden="true" class="w-3.5 h-3.5"></i></button>' : ""}
         <button type="button" aria-label="Dismiss notification" class="toast-close p-1 opacity-70 hover:opacity-100 cursor-pointer"><i data-lucide="x" aria-hidden="true" class="w-3.5 h-3.5"></i></button>
@@ -298,11 +298,11 @@ const UI = (function () {
     dialogEl.setAttribute("data-modal-static", "");
     dialogEl.className = "fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4";
     dialogEl.innerHTML = `
-      <form class="w-full max-w-md bg-s1 border border-line2 rounded-3xl p-6 space-y-4 shadow-2xl" novalidate>
+      <form class="w-full max-w-md bg-s1 border border-line2 rounded-2xl p-6 space-y-4 shadow-2xl" novalidate>
         <div class="flex items-start space-x-3">
           <div id="ui-dialog-icon" class="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"></div>
           <div class="min-w-0">
-            <h3 id="ui-dialog-title" class="text-base font-bold text-fg"></h3>
+            <h3 id="ui-dialog-title" class="text-base font-semibold text-fg"></h3>
             <p id="ui-dialog-message" class="text-xs text-fg3 mt-1 whitespace-pre-line break-words"></p>
           </div>
         </div>
@@ -312,7 +312,7 @@ const UI = (function () {
         </div>
         <div class="flex justify-end space-x-2 pt-1">
           <button type="button" id="ui-dialog-cancel" class="px-4 py-2 rounded-xl bg-s3 hover:bg-s4 text-xs font-semibold text-fg2">Cancel</button>
-          <button type="submit" id="ui-dialog-ok" class="px-5 py-2 rounded-xl text-xs font-bold"></button>
+          <button type="submit" id="ui-dialog-ok" class="px-5 py-2 rounded-xl text-xs font-semibold"></button>
         </div>
       </form>`;
     document.body.appendChild(dialogEl);
@@ -335,7 +335,7 @@ const UI = (function () {
       el.querySelector("#ui-dialog-message").textContent = message;
       ok.textContent = confirmText;
       cancel.textContent = cancelText;
-      ok.className = "px-5 py-2 rounded-xl text-xs font-bold " + (danger ? "bg-red-600 hover:bg-red-500 text-white" : "bg-spotify-green hover:bg-spotify-hover text-black");
+      ok.className = "px-5 py-2 rounded-xl text-xs font-semibold " + (danger ? "bg-red-600 hover:bg-red-500 text-white" : "bg-spotify-green hover:bg-spotify-hover text-black");
       iconBox.className = "w-10 h-10 rounded-xl flex items-center justify-center shrink-0 " + (danger ? "bg-red-500/15 text-red-400" : "bg-spotify-green/15 text-spotify-green");
       iconBox.innerHTML = `<i data-lucide="${danger ? "alert-triangle" : input ? "pencil" : "help-circle"}" aria-hidden="true" class="w-5 h-5"></i>`;
       icons(iconBox);

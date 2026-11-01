@@ -1,14 +1,15 @@
 # Architecture
 
-Spotify Downloader Studio is a local Windows desktop app: a Flask server bound to `127.0.0.1`, a
-pywebview window (or your browser) as the UI, SQLite for state, and FFmpeg for media work.
+Spotify Downloader Studio is a local Windows desktop app: a Flask application served by **waitress** (a production WSGI server)
+bound to `127.0.0.1`, a pywebview window (or your browser) as the UI, SQLite for state, and FFmpeg for media work.
+The packaged exe is a windowed app (no console); it opens straight into the window.
 Everything runs and stores data inside one folder (see *Storage* below).
 
 ```
  UI (static/js/*.js + templates/index.html, local assets only)
         │  fetch / SSE, session cookie
- Flask app  src/web/server.py ── auth, security headers, blueprint registration
-   └ routes/  system · downloads · library · pages · automation · audio_lab
+ Flask app  src/web/server.py ── auth, security headers, blueprint registration; served by waitress (create_wsgi_server)
+   └ routes/  system · downloads · library · pages · automation (incl. rules & hooks) · audio_lab
         │
  Services (plain Python classes)
    metadata_service      resolve Spotify links to track metadata (embed scraper, optional Web API)
@@ -17,7 +18,9 @@ Everything runs and stores data inside one folder (see *Storage* below).
    file_organizer        naming templates, collisions       lyrics_service  LRCLIB lookup
    library_indexer / library_intelligence / quality_service / fingerprint_service   library analysis
    folder_watcher        watch folders, safe intake         rules_engine  organisation rules
-   plugin_engine         webhook / copy hooks, download archive
+   plugin_engine         webhook / copy hooks, download archive    plugin_packs   declarative add-ons (no code runs)
+   download_schedule     hours/days new downloads may start         tray_service   tray icon, notifications, minimise-to-tray
+   metadata_enricher     MusicBrainz + Cover Art Archive lookup (review, then apply)
    scheduler_service + maintenance_service   release monitor, retention, scheduled backups
         │
  settings_service (typed schema) · config_loader · db (SQLite, WAL, migrations) · security · http_client
@@ -109,3 +112,22 @@ fetched from a CDN. Rebuild with `python tools/build_frontend.py` after changing
 
 `python tests/run_tests.py` (everything) or `--fast` (no browser / spawned servers). Tests run
 against a throwaway data directory created by `tests/_hermetic.py`, never your real data.
+
+## Frontend structure
+
+Five sidebar destinations (Home, Downloads, Library, Automation, Settings); the sections inside each are tabs
+(`HUBS` in `static/js/core.js`). Shared services live in `ui.js` (toasts, confirm/prompt dialogs, modal focus
+management, fetch wrapper, keyboard/screen-reader enhancer); `palette.js` is the Ctrl+K command palette;
+`rules.js` is the Rules & hooks screen. Colours are semantic tokens in `style.css` (dark, light, follow-Windows).
+
+Live logs use Server-Sent Events: the server sends *named* `log` events (plus keep-alive comments) and the UI
+listens with `addEventListener("log", ...)`.
+
+## Rules, hooks and archive
+
+`rules_engine` evaluates organising rules against indexed library files and produces a dry-run plan; applying a plan
+moves files atomically (collision policy skip / rename / replace with a recoverable copy) and records a batch that
+can be undone. `plugin_engine` runs hooks after a download finishes or fails, or a batch finishes (webhook, or copy into
+a folder inside the app) and keeps the download archive. `plugin_packs` adds switchable add-ons described by JSON: it
+never runs code, keeps secret settings encrypted, and fires through the same `PluginEngine.deliver`. See
+`docs/rules_and_hooks.md` and `docs/plugins.md`.

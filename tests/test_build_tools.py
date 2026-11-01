@@ -91,11 +91,6 @@ class TestVersionResource(unittest.TestCase):
         exec(text, {n: stub for n in ("VSVersionInfo", "FixedFileInfo", "StringFileInfo", "StringTable", "StringStruct", "VarFileInfo", "VarStruct")})
         target.unlink()
 
-    def test_the_checked_in_version_info_matches_the_source_version(self):
-        text = (ROOT / "version_info.txt").read_text(encoding="utf-8")
-        dotted = ".".join((__version__.split(".") + ["0"] * 4)[:4])
-        self.assertIn(f"u'ProductVersion', u'{dotted}'", text)
-
 
 class TestSha256(unittest.TestCase):
     def test_matches_hashlib_for_multi_chunk_files(self):

@@ -312,7 +312,7 @@ class LibraryIntelligence:
         return results
 
     @classmethod
-    def move_duplicate_to_backup(cls, file_to_move: str) -> Dict[str, Any]:
+    def move_duplicate_to_backup(cls, file_to_move: str, batch_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Reversible safe action: Moves duplicate to downloads/_duplicates_backup/
         and records in organize_history for restoration.
@@ -336,7 +336,7 @@ class LibraryIntelligence:
 
         # Record in organize_history & delete from library_files
         conn = get_db_connection()
-        batch_id = f"backup_{int(time.time())}"
+        batch_id = batch_id or f"backup_{int(time.time())}"
         with conn:
             conn.execute(
                 """
@@ -349,6 +349,149 @@ class LibraryIntelligence:
 
         record_audit("DEDUP", f"Moved duplicate '{p.name}' to backup folder: '{dest_file.name}'")
         return {"success": True, "original_path": str(p), "backup_path": str(dest_file)}
+
+    # ---- one-click resolution: keep the best copy, move the rest aside as one undoable batch
+
+    LOSSLESS_FORMATS = ("flac", "wav", "alac", "aiff")
+    DEDUP_BATCH_PREFIX = "dedup_"
+
+    @classmethod
+    def _quality_profile(cls, f: Dict[str, Any]) -> Dict[str, int]:
+        known = lambda v: bool((v or "").strip()) and v not in ("Unknown Artist", "Unknown Album")   # noqa: E731
+        return {
+            "lossless": int((f.get("format") or "").lower() in cls.LOSSLESS_FORMATS),
+            "bitrate": int(f.get("bitrate_kbps") or 0),
+            "art": int(bool(f.get("has_artwork"))),
+            "tags": sum(1 for k in ("title", "artist", "album") if known(f.get(k))) + int(f.get("tag_status") == "VALID"),
+        }
+
+    @classmethod
+    def _keep_rank(cls, f: Dict[str, Any]) -> tuple:
+        q = cls._quality_profile(f)
+        return (q["lossless"], q["bitrate"], q["art"], q["tags"], -len(f.get("path") or ""))
+
+    @staticmethod
+    def _dominates(keep: Dict[str, int], other: Dict[str, int]) -> bool:
+        """The kept copy is at least as good in every respect, so removing the other loses nothing."""
+        return all(keep[k] >= other[k] for k in keep)
+
+    @classmethod
+    def _describe_quality(cls, f: Dict[str, Any]) -> str:
+        fmt = (f.get("format") or "?").upper()
+        br = f.get("bitrate_kbps")
+        return f"{fmt}{f' {br}k' if br else ''}{'' if f.get('has_artwork') else ', no artwork'}"
+
+    @classmethod
+    def plan_duplicate_resolution(cls, include_probable: bool = True) -> Dict[str, Any]:
+        """Decide, without touching anything, which duplicate copies could be moved aside.
+
+        Identical files (same SHA-256) always qualify. Probable duplicates (same recording by tags and length) only
+        qualify when the copy being kept is at least as good in every respect; anything else is left for you to review.
+        """
+        sources = [("exact", cls.get_exact_duplicates())]
+        if include_probable:
+            sources.append(("probable", cls.find_probable_recording_duplicates()))
+        claimed: set = set()
+        groups: List[Dict[str, Any]] = []
+        needs_review = 0
+        for kind, found in sources:
+            for g in found:
+                files = [f for f in g["files"] if f["path"] not in claimed and Path(f["path"]).exists()]
+                if len(files) < 2:
+                    continue
+                claimed.update(f["path"] for f in files)
+                keep = max(files, key=cls._keep_rank)
+                keep_profile = cls._quality_profile(keep)
+                remove, blocked = [], 0
+                for f in files:
+                    if f is keep:
+                        continue
+                    if kind == "exact":
+                        reason = "Identical file"
+                    elif cls._dominates(keep_profile, cls._quality_profile(f)):
+                        reason = "Lower quality than the kept copy"
+                    else:
+                        blocked += 1
+                        continue
+                    remove.append({"path": f["path"], "filename": f["filename"], "format": f.get("format"),
+                                   "size_bytes": f.get("size_bytes") or 0, "quality": cls._describe_quality(f), "reason": reason})
+                if blocked:
+                    needs_review += 1
+                if remove:
+                    groups.append({"group_id": g["group_id"], "kind": kind, "title": keep.get("title") or keep["filename"],
+                                   "artist": keep.get("artist") or "",
+                                   "keep": {"path": keep["path"], "filename": keep["filename"], "quality": cls._describe_quality(keep)},
+                                   "remove": remove, "needs_review": bool(blocked)})
+        return {
+            "groups": groups,
+            "group_count": len(groups),
+            "file_count": sum(len(g["remove"]) for g in groups),
+            "reclaim_bytes": sum(r["size_bytes"] for g in groups for r in g["remove"]),
+            "needs_review": needs_review,
+        }
+
+    @classmethod
+    def _validate_resolution_pair(cls, conn, keep_path: str, remove_path: str) -> Optional[str]:
+        """Re-check a requested (keep, remove) pair from scratch; returns a reason to refuse, or None."""
+        keep = conn.execute("SELECT * FROM library_files WHERE path = ?", (keep_path,)).fetchone()
+        remove = conn.execute("SELECT * FROM library_files WHERE path = ?", (remove_path,)).fetchone()
+        if keep is None or remove is None:
+            return "not in the library index"
+        if not Path(keep_path).exists() or not Path(remove_path).exists():
+            return "file is missing on disk"
+        k, r = dict(keep), dict(remove)
+        if k.get("sha256") and k.get("sha256") == r.get("sha256"):
+            return None
+        same_recording = (cls.normalize_string(k.get("artist", "")) == cls.normalize_string(r.get("artist", ""))
+                          and cls.normalize_string(cls.strip_track_title_noise(k.get("title", ""))) == cls.normalize_string(cls.strip_track_title_noise(r.get("title", "")))
+                          and abs(float(k.get("duration_sec") or 0) - float(r.get("duration_sec") or 0)) <= 3.5)
+        if not same_recording:
+            return "the two files are not duplicates of each other"
+        if not cls._dominates(cls._quality_profile(k), cls._quality_profile(r)):
+            return "the other copy is better in some way, so it needs your review"
+        return None
+
+    @classmethod
+    def apply_duplicate_resolution(cls, pairs: List[Dict[str, str]]) -> Dict[str, Any]:
+        """Move the 'remove' copies into the duplicates backup folder as a single batch that can be undone."""
+        keeps = {p.get("keep", "") for p in pairs}
+        removes = {p.get("remove", "") for p in pairs}
+        if "" in keeps or "" in removes:
+            raise ValueError("Every item needs a file to keep and a file to remove")
+        if keeps & removes:
+            raise ValueError("A file cannot be both kept and removed")
+        conn = get_db_connection()
+        batch_id = f"{cls.DEDUP_BATCH_PREFIX}{int(time.time())}_{uuid.uuid4().hex[:6]}"
+        moved, refused, reclaimed = 0, [], 0
+        for pair in pairs:
+            problem = cls._validate_resolution_pair(conn, pair["keep"], pair["remove"])
+            if problem:
+                refused.append({"path": pair["remove"], "reason": problem})
+                continue
+            size = Path(pair["remove"]).stat().st_size
+            try:
+                cls.move_duplicate_to_backup(pair["remove"], batch_id=batch_id)
+            except (OSError, PermissionError) as e:
+                refused.append({"path": pair["remove"], "reason": str(e)})
+                continue
+            moved += 1
+            reclaimed += size
+        record_audit("DEDUP", f"Duplicate cleanup '{batch_id}': {moved} moved aside, {len(refused)} left alone")
+        return {"batch_id": batch_id if moved else None, "moved": moved, "refused": refused, "reclaimed_bytes": reclaimed}
+
+    @classmethod
+    def undo_duplicate_resolution(cls, batch_id: str) -> int:
+        if not batch_id.startswith(cls.DEDUP_BATCH_PREFIX):
+            raise ValueError("That is not a duplicate-cleanup batch")
+        return cls.rollback_bulk_organization(batch_id)
+
+    @classmethod
+    def last_duplicate_resolution(cls) -> Optional[Dict[str, Any]]:
+        row = get_db_connection().execute(
+            """SELECT batch_id, COUNT(*) AS files, MAX(timestamp) AS at FROM organize_history
+               WHERE batch_id LIKE ? AND status = 'MOVED' GROUP BY batch_id ORDER BY at DESC LIMIT 1""",
+            (cls.DEDUP_BATCH_PREFIX + "%",)).fetchone()
+        return dict(row) if row else None
 
     @classmethod
     def delete_duplicate_safely(cls, file_to_delete: str) -> bool:
@@ -407,6 +550,8 @@ class LibraryIntelligence:
             where_sql = "WHERE (album IS NULL OR album = '' OR album = 'Unknown Album')"
         elif filter_type == "missing_art":
             where_sql = "WHERE has_artwork = 0"
+        elif filter_type == "missing_tags":
+            where_sql = "WHERE (tag_status != 'VALID' OR artist = 'Unknown Artist' OR album = 'Unknown Album')"
         elif filter_type == "corrupt":
             where_sql = "WHERE tag_status IN ('UNREADABLE', 'CORRUPT')"
 
@@ -561,9 +706,9 @@ class LibraryIntelligence:
         }
 
     @classmethod
-    def apply_metadata_repair(cls, file_path_str: str, approved_updates: Dict[str, Any]) -> bool:
+    def apply_metadata_repair(cls, file_path_str: str, approved_updates: Dict[str, Any], cover_bytes: Optional[bytes] = None) -> bool:
         """
-        Applies approved field updates with pre-write safety backup,
+        Applies approved field updates (and optionally a JPEG cover) with pre-write safety backup,
         post-write mutagen verification, and automatic rollback on failure.
         """
         p = Path(file_path_str).resolve()
@@ -591,8 +736,11 @@ class LibraryIntelligence:
                 except ValueError: pass
             if "year" in approved_updates and approved_updates["year"]:
                 meta["year"] = str(approved_updates["year"]).strip()
+            if approved_updates.get("total_tracks"):
+                try: meta["total_tracks"] = int(approved_updates["total_tracks"])
+                except ValueError: pass
 
-            success = TagWriter.apply_tags(p, meta)
+            success = TagWriter.apply_tags(p, meta, cover_image_bytes=cover_bytes)
             if not success:
                 raise RuntimeError("TagWriter returned False")
 
@@ -776,10 +924,13 @@ class LibraryIntelligence:
                 shutil.move(str(src), str(dst))
                 with conn:
                     conn.execute("UPDATE organize_history SET status = 'RESTORED' WHERE id = ?", (r["id"],))
-                    conn.execute(
+                    updated = conn.execute(
                         "UPDATE library_files SET path = ?, filename = ?, folder = ? WHERE path = ?",
                         (str(dst), dst.name, dst.parent.name, str(src))
-                    )
+                    ).rowcount
+                if not updated:      # its library row was removed when it was moved aside (duplicates): index it again
+                    from src.library_indexer import LibraryIndexer
+                    LibraryIndexer.index_single_file(dst)
                 restored_count += 1
 
         record_audit("ORGANIZER", f"Rolled back {restored_count} files for batch '{batch_id}'.")
@@ -813,6 +964,7 @@ class LibraryIntelligence:
         temp_dir = TEMP_DIR
         deleted_count = 0
         reclaimed_bytes = 0
+        failed_count = 0
 
         for item in temp_dir.glob("*"):
             if item.is_file():
@@ -822,10 +974,13 @@ class LibraryIntelligence:
                     deleted_count += 1
                     reclaimed_bytes += sz
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    failed_count += 1
+                    logger.warning("Could not delete temp file %s (probably in use)", item, exc_info=True)
 
-        record_audit("CLEANUP", f"Cleaned {deleted_count} temp files ({round(reclaimed_bytes / (1024*1024), 2)} MB reclaimed)")
+        in_use = f"; {failed_count} could not be deleted (in use)" if failed_count else ""
+        record_audit("CLEANUP", f"Cleaned {deleted_count} temp files ({round(reclaimed_bytes / (1024*1024), 2)} MB reclaimed){in_use}")
         return {
             "deleted_files": deleted_count,
+            "failed_files": failed_count,
             "reclaimed_mb": round(reclaimed_bytes / (1024 * 1024), 2)
         }

@@ -61,6 +61,12 @@ class SpotifyApiHelper:
     def has_web_api(self) -> bool:
         return self.sp is not None
 
+    def client(self) -> spotipy.Spotify:
+        """The Web API client; callers guard with has_web_api() and fall back when it raises."""
+        if self.sp is None:
+            raise RuntimeError("Spotify Web API is not configured")
+        return self.sp
+
     def get_playlist_metadata(self, playlist_id: str) -> Tuple[str, List[Dict]]:
         """
         Retrieves full playlist metadata and track items via Spotify Web API.

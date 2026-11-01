@@ -43,7 +43,7 @@ class TagWriter:
                     with open(cover_dest, "wb") as f:
                         f.write(cover_image_bytes)
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    logger.warning("Could not save %s (cover art file next to the track)", cover_dest, exc_info=True)
 
         # Protect against partial file corruption with temporary buffer
         temp_dir = get_temp_path()

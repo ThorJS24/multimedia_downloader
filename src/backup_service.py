@@ -1,12 +1,21 @@
 import datetime
+import json
+import os
+import shutil
 import sqlite3
+import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.config_loader import PROJECT_ROOT
-from src.db import get_db_connection
+from src.db import RESTORE_PENDING, RESTORE_PENDING_INFO, RESTORE_RESULT, get_db_connection, get_db_path
 
 BACKUPS_DIR = PROJECT_ROOT / "data" / "backups"
+
+
+def _data_dir() -> Path:
+    """Folder holding studio.db, where a staged restore waits for the next start."""
+    return get_db_path().parent
 
 
 class BackupService:
@@ -53,3 +62,66 @@ class BackupService:
         row = cur.fetchone()
         status = row[0] if row else "unknown"
         return status == "ok", status
+
+    # ---- restore (staged; applied by src.db on the next start)
+
+    @classmethod
+    def _find_backup(cls, filename: str) -> Path:
+        """Only files this service lists can be restored, so a crafted name can never point elsewhere."""
+        for item in cls.list_backups():
+            if item["filename"] == filename:
+                return Path(item["path"])
+        raise ValueError("That backup does not exist")
+
+    @classmethod
+    def stage_restore(cls, filename: str) -> Dict[str, Any]:
+        """Check the chosen backup and stage it; nothing changes until the app is restarted."""
+        source = cls._find_backup(filename)
+        probe = sqlite3.connect(f"file:{source.as_posix()}?mode=ro", uri=True)
+        try:
+            status = probe.execute("PRAGMA integrity_check").fetchone()[0]
+            has_schema = probe.execute("SELECT 1 FROM sqlite_master WHERE name = 'schema_migrations'").fetchone()
+        except sqlite3.DatabaseError as e:
+            raise ValueError(f"That backup is damaged and cannot be restored ({e})") from e
+        finally:
+            probe.close()
+        if status != "ok":
+            raise ValueError(f"That backup is damaged and cannot be restored ({status})")
+        if not has_schema:
+            raise ValueError("That file is not a Spotify Downloader Studio backup")
+        data_dir = _data_dir()
+        tmp = data_dir / (RESTORE_PENDING + ".part")
+        shutil.copy2(source, tmp)
+        os.replace(tmp, data_dir / RESTORE_PENDING)           # atomic: a half-copied file is never picked up
+        info = {"source": source.name, "staged_at": time.time()}
+        (data_dir / RESTORE_PENDING_INFO).write_text(json.dumps(info), encoding="utf-8")
+        return info
+
+    @classmethod
+    def pending_restore(cls) -> Optional[Dict[str, Any]]:
+        data_dir = _data_dir()
+        if not (data_dir / RESTORE_PENDING).exists():
+            return None
+        try:
+            return json.loads((data_dir / RESTORE_PENDING_INFO).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"source": None, "staged_at": None}
+
+    @classmethod
+    def cancel_restore(cls) -> bool:
+        data_dir = _data_dir()
+        existed = (data_dir / RESTORE_PENDING).exists()
+        (data_dir / RESTORE_PENDING).unlink(missing_ok=True)
+        (data_dir / RESTORE_PENDING_INFO).unlink(missing_ok=True)
+        return existed
+
+    @classmethod
+    def last_restore(cls) -> Optional[Dict[str, Any]]:
+        try:
+            return json.loads((_data_dir() / RESTORE_RESULT).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    @classmethod
+    def dismiss_last_restore(cls) -> None:
+        (_data_dir() / RESTORE_RESULT).unlink(missing_ok=True)

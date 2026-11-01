@@ -12,7 +12,6 @@ credentials.json
 
 # ---- Environments & tool caches ----
 .venv/
-.venv310/
 venv/
 __pycache__/
 *.pyc
@@ -22,21 +21,22 @@ __pycache__/
 tools/frontend/node_modules/
 tools/frontend/.npm-cache/
 
-# ---- Build output ----
+# ---- Build output (version_info.txt is written by build_windows.py from src/version.py) ----
 build/
 dist/
 *.spec.bak
+version_info.txt
 
 # ---- Large third-party binaries (download separately; see README) ----
 bin/ffmpeg.exe
 bin/ffprobe.exe
 tools/InnoSetup/
 
+# ---- Machine-specific ----
+mcp_config.json
+
 # ---- Editor / OS ----
 .vscode/
 .idea/
 Thumbs.db
 .DS_Store
-
-# Pre-redesign copy of the UI kept for reference (safe to delete)
-ui_backup_original/

@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from src.config_loader import DATA_DIR
 from src.instance_lock import instance_lock
@@ -109,12 +109,13 @@ shell_bridge = ShellBridge()
 
 
 class DesktopApp:
-    def __init__(self, port: Optional[int] = None, use_browser: bool = False, headless: bool = False):
+    def __init__(self, port: Optional[int] = None, use_browser: bool = False, headless: bool = False, url_file: Optional[str] = None):
         self.port = port or find_free_port()
         self.use_browser = use_browser
         self.headless = headless
-        self.server_thread = None
-        self.window = None
+        self.url_file = url_file
+        self.server_thread: Optional[threading.Thread] = None
+        self.window: Any = None
         self.is_shutting_down = False
 
     def launch(self):
@@ -122,20 +123,19 @@ class DesktopApp:
         if not instance_lock.acquire():
             print("\n[!] Another instance of Spotify Downloader Studio is already running.", flush=True)
             print("[!] Please check your system tray or taskbar.\n", flush=True)
-            notify_user("Spotify Downloader Studio", "Spotify Downloader Studio is already running.\n\nLook for its window in the taskbar.")
+            notify_user("Spotify Downloader Studio", "Spotify Downloader Studio is already running.\n\nLook for its window in the taskbar, or its icon next to the clock if it was minimised to the tray.")
             sys.exit(0)
 
         # 2. Start background Flask server
-        from src.web.server import app, start_background_services
+        from src.web.server import serve_app, start_background_services
         start_background_services()
         url = f"http://127.0.0.1:{self.port}?token={SESSION_AUTH_TOKEN}"
 
-        def run_flask():
+        def run_server():
             logger.info(f"Starting background server on port {self.port}")
-            # Run without reloader, threaded
-            app.run(host="127.0.0.1", port=self.port, debug=False, threaded=True, use_reloader=False)
+            serve_app("127.0.0.1", self.port)      # waitress (production WSGI server)
 
-        self.server_thread = threading.Thread(target=run_flask, daemon=True, name="FlaskServerThread")
+        self.server_thread = threading.Thread(target=run_server, daemon=True, name="StudioServerThread")
         self.server_thread.start()
 
         # Open as soon as the server answers (usually well under a second) instead of a fixed sleep.
@@ -144,6 +144,11 @@ class DesktopApp:
 
         # 3. Headless, Browser, OR Native WebView Window
         if self.headless:
+            if self.url_file:
+                try:
+                    Path(self.url_file).write_text(url, encoding="utf-8")
+                except OSError:
+                    logger.warning("Could not write the startup address to %s", self.url_file, exc_info=True)
             print(f"\n[*] Spotify Downloader Studio running in headless mode: {url}", flush=True)
             print("[*] Press Ctrl+C to stop the local server.\n", flush=True)
             try:
@@ -166,7 +171,7 @@ class DesktopApp:
                 logger.info("Initializing pywebview native window...")
 
                 state = load_window_state()
-                kwargs = {}
+                kwargs: Dict[str, Any] = {}
                 if "x" in state and "y" in state:
                     kwargs.update(x=state["x"], y=state["y"])
                 self.window = webview.create_window(
@@ -185,6 +190,8 @@ class DesktopApp:
                 # The closing handler runs on the WinForms UI thread: it must NOT raise (a SystemExit there
                 # surfaces as an "Unhandled exception" dialog), so it only cleans up. The process ends below.
                 self.window.events.closing += self._on_window_closing
+                self.window.events.minimized += self._on_minimized
+                self._start_tray()
                 webview.start(debug=False)
                 self.shutdown(exit_process=False)   # normally already done by the closing handler (idempotent)
                 sys.exit(0)
@@ -199,6 +206,36 @@ class DesktopApp:
                         time.sleep(1)
                 except KeyboardInterrupt:
                     self.shutdown()
+
+    # ---- tray icon (notifications and minimise-to-tray); only exists while the window does
+    def _start_tray(self):
+        try:
+            from src.tray_service import TrayService
+            from src.web.state import queue_manager
+
+            def toggle_pause():
+                queue_manager.resume() if queue_manager.is_paused else queue_manager.pause()
+
+            TrayService.configure(on_open=self._show_window, on_quit=self._quit_from_tray,
+                                  on_toggle_pause=toggle_pause, is_paused=lambda: queue_manager.is_paused)
+        except Exception:
+            logger.warning("The tray icon could not be set up; notifications are unavailable", exc_info=True)
+
+    def _show_window(self):
+        window = self.window
+        if window is None:
+            return
+        window.show()
+        window.restore()
+
+    def _quit_from_tray(self):
+        if self.window is not None:
+            self.window.destroy()          # runs the normal closing path, so everything shuts down cleanly
+
+    def _on_minimized(self):
+        from src.tray_service import TrayService
+        if self.window is not None and TrayService.minimize_to_tray_enabled():
+            self.window.hide()
 
     def _remember_window(self):
         window = self.window
@@ -228,10 +265,15 @@ class DesktopApp:
         shell_bridge.detach()
         logger.info("Initiating clean application shutdown...")
         try:
+            from src.tray_service import TrayService
+            TrayService.shutdown()
+        except Exception:
+            logger.debug("Removing the tray icon during shutdown failed", exc_info=True)
+        try:
             from src.folder_watcher import FolderWatcherService
             FolderWatcherService.stop()
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Stopping the folder watcher during shutdown failed", exc_info=True)
         try:
             from src.maintenance_service import MaintenanceService
             MaintenanceService.stop()
@@ -241,7 +283,7 @@ class DesktopApp:
             # Release mutex lock
             instance_lock.release()
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Releasing the single-instance lock during shutdown failed", exc_info=True)
         logger.info("Shutdown completed. Exiting cleanly.")
         if exit_process:
             sys.exit(0)

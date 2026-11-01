@@ -11,7 +11,7 @@ async function loadIntelligence() {
     const ring = document.getElementById("intel-health-ring");
     if (ring) {
       ring.setAttribute("stroke-dasharray", `${res.health_score}, 100`);
-      ring.className = res.health_score > 80 ? "text-spotify-green transition-all duration-1000" : (res.health_score > 50 ? "text-amber-400 transition-all duration-1000" : "text-red-400 transition-all duration-1000");
+      ring.className = res.health_score > 80 ? "text-spotify-green transition-colors duration-1000" : (res.health_score > 50 ? "text-amber-400 transition-colors duration-1000" : "text-red-400 transition-colors duration-1000");
     }
 
     // Last scan label
@@ -72,10 +72,10 @@ async function loadIntelligence() {
       recList.innerHTML = (res.recommendations || []).map(r => `
         <div class="p-3 rounded-xl bg-s2 border border-line2 flex items-center justify-between">
           <div>
-            <div class="font-bold text-fg">${escapeHtml(r.action)}</div>
+            <div class="font-semibold text-fg">${escapeHtml(r.action)}</div>
             <div class="text-2xs text-fg3">${escapeHtml(r.description)}</div>
           </div>
-          <span class="px-2 py-0.5 rounded-full text-2xs font-bold ${r.severity === 'HIGH' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-300'}">${escapeHtml(r.severity)}</span>
+          <span class="px-2 py-0.5 rounded-full text-2xs font-semibold ${r.severity === 'HIGH' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-300'}">${escapeHtml(r.severity)}</span>
         </div>
       `).join("") || `<span class="text-emerald-400 font-medium text-xs">✓ All audio files healthy and organized!</span>`;
     }
@@ -92,7 +92,7 @@ async function loadQualityLab() {
     if (container && res.profiles) {
       container.innerHTML = Object.entries(res.profiles).map(([name, prof]) => `
         <div class="p-4 rounded-2xl bg-s2 border border-line space-y-2">
-          <div class="font-bold text-fg flex items-center justify-between">
+          <div class="font-semibold text-fg flex items-center justify-between">
             <span>${escapeHtml(name)}</span>
             <span class="px-2 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green text-2xs font-mono uppercase">${escapeHtml(prof.format)}</span>
           </div>
@@ -108,7 +108,7 @@ async function loadQualityLab() {
 
 async function runLibraryQualityAudit() {
   const btn = document.getElementById("btn-run-audit");
-  btn.innerHTML = `<span class="animate-pulse">Inspecting Files (EBU R128)...</span>`;
+  btn.innerHTML = `<span class="">Inspecting Files (EBU R128)...</span>`;
   btn.disabled = true;
 
   try {
@@ -122,9 +122,9 @@ async function runLibraryQualityAudit() {
           <td class="py-3 px-4 font-mono">${a.stream?.bitrate_kbps ?? "n/a"}k</td>
           <td class="py-3 px-4 font-mono">${a.stream?.sample_rate ?? "n/a"} Hz</td>
           <td class="py-3 px-4 font-mono text-cyan-400">${a.loudness?.integrated_lufs != null ? a.loudness.integrated_lufs + " LUFS" : "n/a"}</td>
-          <td class="py-3 px-4 font-mono ${a.loudness?.true_peak_dbtp >= 0.0 ? 'text-red-400 font-bold' : 'text-fg2'}">${a.loudness?.true_peak_dbtp != null ? a.loudness.true_peak_dbtp + " dBTP" : "n/a"}</td>
+          <td class="py-3 px-4 font-mono ${a.loudness?.true_peak_dbtp >= 0.0 ? 'text-red-400 font-semibold' : 'text-fg2'}">${a.loudness?.true_peak_dbtp != null ? a.loudness.true_peak_dbtp + " dBTP" : "n/a"}</td>
           <td class="py-3 px-4">
-            <span class="px-2 py-0.5 rounded-full text-2xs font-bold ${a.status === 'EXCELLENT' ? 'bg-emerald-500/20 text-emerald-400' : (a.status === 'CLIPPING_RISK' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-300')}">
+            <span class="px-2 py-0.5 rounded-full text-2xs font-semibold ${a.status === 'EXCELLENT' ? 'bg-emerald-500/20 text-emerald-400' : (a.status === 'CLIPPING_RISK' ? 'bg-red-500/20 text-red-400' : 'bg-amber-500/20 text-amber-300')}">
               ${escapeHtml(a.status)}
             </span>
           </td>
@@ -142,7 +142,7 @@ async function runLibraryQualityAudit() {
 
 async function scanAcousticDuplicates() {
   const btn = document.getElementById("btn-scan-fingerprints");
-  btn.innerHTML = `<span class="animate-pulse">Computing Spectral Hashes...</span>`;
+  btn.innerHTML = `<span class="">Computing Spectral Hashes...</span>`;
   btn.disabled = true;
 
   try {
@@ -152,11 +152,11 @@ async function scanAcousticDuplicates() {
       container.innerHTML = res.duplicates.map(d => `
         <div class="p-3.5 rounded-xl bg-s2 border border-line flex items-center justify-between">
           <div class="space-y-1">
-            <div class="font-bold text-fg">Track A: ${escapeHtml(d.file_a.title || d.file_a.path)}</div>
+            <div class="font-semibold text-fg">Track A: ${escapeHtml(d.file_a.title || d.file_a.path)}</div>
             <div class="text-2xs text-fg3">Track B: ${escapeHtml(d.file_b.title || d.file_b.path)}</div>
           </div>
           <div class="text-right">
-            <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-mono font-bold">${Math.round(d.similarity * 100)}% Match</span>
+            <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-mono font-semibold">${Math.round(d.similarity * 100)}% Match</span>
             <div class="text-2xs text-fg4 mt-1">${escapeHtml(d.type)}</div>
           </div>
         </div>
@@ -181,7 +181,7 @@ async function runReleaseComparison() {
   }
 
   const container = document.getElementById("cmp-results-container");
-  container.innerHTML = `<div class="p-6 text-center text-spotify-green animate-pulse">Resolving releases and comparing tracks...</div>`;
+  container.innerHTML = `<div class="p-6 text-center text-spotify-green">Resolving releases and comparing tracks...</div>`;
   container.classList.remove("hidden");
 
   try {
@@ -194,16 +194,16 @@ async function runReleaseComparison() {
     container.innerHTML = `
       <div class="grid grid-cols-2 gap-4">
         <div class="p-4 rounded-2xl bg-s2 border border-line space-y-2">
-          <h4 class="font-bold text-sm text-fg">${escapeHtml(res.release_a.name)} (${res.release_a.track_count} tracks)</h4>
+          <h4 class="font-semibold text-sm text-fg">${escapeHtml(res.release_a.name)} (${res.release_a.track_count} tracks)</h4>
           <div class="text-xs text-fg3">${res.only_in_a.length} unique tracks in Release A</div>
         </div>
         <div class="p-4 rounded-2xl bg-s2 border border-line space-y-2">
-          <h4 class="font-bold text-sm text-fg">${escapeHtml(res.release_b.name)} (${res.release_b.track_count} tracks)</h4>
+          <h4 class="font-semibold text-sm text-fg">${escapeHtml(res.release_b.name)} (${res.release_b.track_count} tracks)</h4>
           <div class="text-xs text-fg3">${res.only_in_b.length} unique tracks in Release B</div>
         </div>
       </div>
       <div class="p-4 rounded-2xl bg-s2 border border-line space-y-2">
-        <h4 class="font-bold text-sm text-fg">Matched Tracks (${res.matched_tracks_count})</h4>
+        <h4 class="font-semibold text-sm text-fg">Matched Tracks (${res.matched_tracks_count})</h4>
         <div class="divide-y divide-line max-h-60 overflow-y-auto">
           ${res.matched_tracks.map(t => `
             <div class="py-2 flex justify-between text-xs">
@@ -233,7 +233,7 @@ async function fetchRepairQueue() {
             ${q.issues.map(i => `<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-2xs mr-1">${escapeHtml(i)}</span>`).join("")}
           </td>
           <td class="py-3 px-4 text-right">
-            <button data-on-click="openTagModal_38155e" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(q.path), encodeURIComponent(q.current_title || ''), encodeURIComponent(q.current_artist || ''), encodeURIComponent(q.current_album || '')]))}" class="px-3 py-1 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">
+            <button data-on-click="openTagModal_38155e" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(q.path), encodeURIComponent(q.current_title || ''), encodeURIComponent(q.current_artist || ''), encodeURIComponent(q.current_album || '')]))}" class="px-3 py-1 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs">
               Edit
             </button>
           </td>
@@ -265,13 +265,13 @@ async function loadMonitors() {
     if (cTbody && cRes.calendar) {
       cTbody.innerHTML = cRes.calendar.map(c => `
         <tr class="hover:bg-hv transition-colors">
-          <td class="py-3 px-4 font-bold text-fg">${escapeHtml(c.title)}</td>
+          <td class="py-3 px-4 font-semibold text-fg">${escapeHtml(c.title)}</td>
           <td class="py-3 px-4 text-fg2">${escapeHtml(c.artist_name)}</td>
           <td class="py-3 px-4 uppercase text-fg3 font-mono text-2xs">${escapeHtml(c.release_type)}</td>
           <td class="py-3 px-4 font-mono text-fg2">${escapeHtml(c.release_date)}</td>
-          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green text-2xs font-bold">${escapeHtml(c.status)}</span></td>
+          <td class="py-3 px-4"><span class="px-2 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green text-2xs font-semibold">${escapeHtml(c.status)}</span></td>
           <td class="py-3 px-4 text-right">
-            <button data-on-click="fetchLinkDirectly_bde04b" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(c.spotify_url)]))}" class="px-3 py-1 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-bold text-xs">
+            <button data-on-click="fetchLinkDirectly_bde04b" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(c.spotify_url)]))}" class="px-3 py-1 rounded-lg bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs">
               Fetch & Download
             </button>
           </td>
@@ -310,7 +310,7 @@ async function deleteMonitoredArtist(id) {
 
 async function checkAllMonitorsNow() {
   const btn = document.getElementById("btn-check-monitors");
-  btn.innerHTML = `<span class="animate-pulse">Checking Spotify Discographies...</span>`;
+  btn.innerHTML = `<span class="">Checking Spotify Discographies...</span>`;
   btn.disabled = true;
   try {
     const res = await (await fetch("/api/monitors/check", { method: "POST" })).json();
@@ -338,7 +338,7 @@ function fetchLinkDirectly(url) {
 async function cleanTempBuffers() {
   try {
     const res = await (await fetch("/api/optimizer/clean-temp", { method: "POST" })).json();
-    showToast(`Removed ${res.deleted_files} temporary file${res.deleted_files === 1 ? "" : "s"} (${res.reclaimed_mb} MB).`, "success");
+    showToast(`Removed ${res.deleted_files} temporary file${res.deleted_files === 1 ? "" : "s"} (${res.reclaimed_mb} MB).` + (res.failed_files ? `\n${res.failed_files} couldn't be deleted because they are in use. Close any running download and try again.` : ""), res.failed_files ? "warning" : "success");
     fetchStatus();
   } catch (err) {
     showToast("Cleanup error: " + err, "error");
@@ -356,12 +356,12 @@ function switchDuplicateTab(tab) {
   const btnProb = document.getElementById("btn-dup-probable");
 
   if (tab === "exact") {
-    btnExact.className = "px-3.5 py-1.5 rounded-xl bg-spotify-green/20 text-spotify-green font-bold text-xs transition-all";
-    btnProb.className = "px-3.5 py-1.5 rounded-xl bg-s3 text-fg3 hover:text-fg font-medium text-xs transition-all";
+    btnExact.className = "px-3.5 py-1.5 rounded-xl bg-spotify-green/20 text-spotify-green font-semibold text-xs transition-colors";
+    btnProb.className = "px-3.5 py-1.5 rounded-xl bg-s3 text-fg3 hover:text-fg font-medium text-xs transition-colors";
     loadExactDuplicates();
   } else {
-    btnProb.className = "px-3.5 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 font-bold text-xs transition-all";
-    btnExact.className = "px-3.5 py-1.5 rounded-xl bg-s3 text-fg3 hover:text-fg font-medium text-xs transition-all";
+    btnProb.className = "px-3.5 py-1.5 rounded-xl bg-purple-500/20 text-purple-300 font-semibold text-xs transition-colors";
+    btnExact.className = "px-3.5 py-1.5 rounded-xl bg-s3 text-fg3 hover:text-fg font-medium text-xs transition-colors";
     loadProbableDuplicates();
   }
 }
@@ -373,7 +373,7 @@ function drillDownToDuplicates(tab) {
 
 async function loadExactDuplicates() {
   const container = document.getElementById("optimizer-duplicates-list");
-  container.innerHTML = `<div class="p-6 text-center text-spotify-green animate-pulse">Calculating SHA-256 cryptographic hashes...</div>`;
+  container.innerHTML = `<div class="p-6 text-center text-spotify-green">Calculating SHA-256 cryptographic hashes...</div>`;
 
   try {
     const res = await (await fetch("/api/duplicates/exact")).json();
@@ -389,10 +389,10 @@ async function loadExactDuplicates() {
       <div class="p-4 rounded-2xl bg-s2 border border-line space-y-3">
         <div class="flex items-center justify-between">
           <div class="space-y-0.5">
-            <span class="font-bold text-fg text-xs">${g.count} Bit-for-Bit Identical Copies (${Math.round(g.size_bytes / 1024 / 1024 * 10) / 10} MB each)</span>
+            <span class="font-semibold text-fg text-xs">${g.count} Bit-for-Bit Identical Copies (${Math.round(g.size_bytes / 1024 / 1024 * 10) / 10} MB each)</span>
             <div class="text-2xs text-fg4 font-mono">SHA-256: ${escapeHtml(g.sha256.substring(0, 24))}...</div>
           </div>
-          <span class="px-2 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green text-2xs font-bold">100% Cryptographic Match</span>
+          <span class="px-2 py-0.5 rounded-full bg-spotify-green/20 text-spotify-green text-2xs font-semibold">100% Cryptographic Match</span>
         </div>
 
         <div class="space-y-2">
@@ -406,7 +406,7 @@ async function loadExactDuplicates() {
                 </div>
                 <div class="flex items-center space-x-2 shrink-0">
                   ${isKeep ? `
-                    <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-2xs font-bold">✓ Recommended to Keep</span>
+                    <span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 text-2xs font-semibold">✓ Recommended to Keep</span>
                   ` : `
                     <button data-on-click="moveDuplicateToBackup_114185" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(f.path)]))}" class="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-amber-300 text-2xs font-semibold border border-amber-600/30">
                       Move to Backup
@@ -429,7 +429,7 @@ async function loadExactDuplicates() {
 
 async function loadProbableDuplicates() {
   const container = document.getElementById("optimizer-duplicates-list");
-  container.innerHTML = `<div class="p-6 text-center text-purple-400 animate-pulse">Clustering normalized recording titles & durations...</div>`;
+  container.innerHTML = `<div class="p-6 text-center text-purple-400">Clustering normalized recording titles & durations...</div>`;
 
   try {
     const res = await (await fetch("/api/duplicates/probable")).json();
@@ -445,10 +445,10 @@ async function loadProbableDuplicates() {
       <div class="p-4 rounded-2xl bg-s2 border border-line space-y-3">
         <div class="flex items-center justify-between">
           <div>
-            <div class="font-bold text-fg text-xs">${escapeHtml(g.normalized_artist.toUpperCase())} — ${escapeHtml(g.normalized_title.toUpperCase())}</div>
+            <div class="font-semibold text-fg text-xs">${escapeHtml(g.normalized_artist.toUpperCase())} — ${escapeHtml(g.normalized_title.toUpperCase())}</div>
             <div class="text-2xs text-fg3">${g.count} variants • Reason: ${escapeHtml(g.retention_reason)}</div>
           </div>
-          <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-bold">Probable Duplicate</span>
+          <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-semibold">Probable Duplicate</span>
         </div>
 
         <div class="space-y-2">
@@ -457,13 +457,13 @@ async function loadProbableDuplicates() {
             return `
               <div class="p-2.5 rounded-xl ${isKeep ? 'bg-[#211a28] border border-purple-800/40' : 'bg-s1 border border-line'} flex items-center justify-between text-xs">
                 <div class="truncate max-w-lg">
-                  <div class="font-bold text-fg truncate">${escapeHtml(f.title)} (${escapeHtml(f.artist)})</div>
+                  <div class="font-semibold text-fg truncate">${escapeHtml(f.title)} (${escapeHtml(f.artist)})</div>
                   <div class="text-2xs text-fg3 font-mono truncate">${escapeHtml(f.path)}</div>
                   <div class="text-2xs text-fg3">${f.format.toUpperCase()} • ${f.bitrate_kbps || 320} kbps • ${f.duration_sec}s</div>
                 </div>
                 <div class="flex items-center space-x-2 shrink-0">
                   ${isKeep ? `
-                    <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-bold">★ Highest Quality Variant</span>
+                    <span class="px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 text-2xs font-semibold">★ Highest Quality Variant</span>
                   ` : `
                     <button data-on-click="moveDuplicateToBackup_114185" data-args-click="${escapeHtml(JSON.stringify([encodeURIComponent(f.path)]))}" class="px-2.5 py-1 rounded-lg bg-s3 hover:bg-s4 text-amber-300 text-2xs font-semibold border border-amber-600/30">
                       Move to Backup
@@ -614,7 +614,7 @@ async function openMetadataRepairModal(encodedPath) {
   modal.classList.remove("hidden");
 
   const tbody = document.getElementById("repair-fields-tbody");
-  tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-spotify-green animate-pulse">Calculating proposed tags...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="5" class="py-8 text-center text-spotify-green">Calculating proposed tags...</td></tr>`;
 
   try {
     const res = await (await fetch("/api/metadata/repair/propose", {
@@ -634,7 +634,7 @@ async function openMetadataRepairModal(encodedPath) {
         </td>
         <td class="py-2.5 px-3 font-semibold text-fg2">${escapeHtml(f.label)}</td>
         <td class="py-2.5 px-3 text-fg3 font-mono text-2xs truncate max-w-[150px]">${escapeHtml(f.current || "--")}</td>
-        <td class="py-2.5 px-3 font-mono text-2xs ${f.is_different ? 'text-spotify-green font-bold' : 'text-fg2'} truncate max-w-[150px]">
+        <td class="py-2.5 px-3 font-mono text-2xs ${f.is_different ? 'text-spotify-green font-semibold' : 'text-fg2'} truncate max-w-[150px]">
           ${escapeHtml(f.proposed || "--")}
         </td>
         <td class="py-2.5 px-3 text-2xs text-fg3">
@@ -703,7 +703,7 @@ async function previewBulkOrganizer() {
   const policy = document.getElementById("organizer-collision-policy").value;
 
   const tbody = document.getElementById("organizer-preview-tbody");
-  tbody.innerHTML = `<tr><td colspan="3" class="py-8 text-center text-spotify-green animate-pulse">Calculating dry-run organization preview...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="3" class="py-8 text-center text-spotify-green">Calculating dry-run organization preview...</td></tr>`;
 
   try {
     const res = await (await fetch("/api/organizer/preview", {
@@ -817,4 +817,116 @@ async function rollbackBulkOrganizer(skipConfirm = false) {
     UI.toast(`Restored ${res.restored_count} file${res.restored_count === 1 ? "" : "s"} to their original locations.`, "success");
     refreshLibrary();
   } catch (_) { /* reported */ }
+}
+
+// ================= ONE-CLICK DUPLICATE CLEANUP =================
+let dedupPlanData = null;
+
+async function dedupPlan() {
+  const btn = document.getElementById("btn-dedup-plan");
+  const box = document.getElementById("dedup-plan");
+  await UI.busy(btn, "Looking…", async () => {
+    try {
+      dedupPlanData = await UI.api("/api/duplicates/resolve/plan", { prefix: "Couldn't check for duplicates" });
+    } catch (_) { return; }
+    renderDedupPlan();
+    box.classList.remove("hidden");
+  });
+}
+
+function renderDedupPlan() {
+  const box = document.getElementById("dedup-plan");
+  const plan = dedupPlanData;
+  if (!plan) return;
+  if (!plan.group_count) {
+    box.innerHTML = `<p class="text-xs text-emerald-400">✓ Nothing to clean up automatically.${plan.needs_review ? ` ${plan.needs_review} group${plan.needs_review === 1 ? "" : "s"} of similar songs need your own decision (use the lists below).` : ""}</p>`;
+    return;
+  }
+  const rows = plan.groups.map((g, i) => `
+    <li class="p-3 rounded-xl bg-s2 border border-line space-y-1.5">
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" class="dedup-group mt-1 accent-spotify-green" data-index="${i}" checked data-on-change="dedupToggle" />
+        <span class="min-w-0 flex-1">
+          <span class="block text-sm font-semibold text-fg truncate">${escapeHtml(g.title)}${g.artist ? ` <span class="font-normal text-fg3">· ${escapeHtml(g.artist)}</span>` : ""}${g.needs_review ? ` <span class="ml-1 px-1.5 py-0.5 rounded bg-amber-950/60 text-amber-300 border border-amber-800/40 text-2xs font-semibold">another copy needs your review</span>` : ""}</span>
+          <span class="block text-xs text-emerald-300 truncate" title="${escapeHtml(g.keep.path)}">Keep: ${escapeHtml(g.keep.filename)} <span class="text-fg3">(${escapeHtml(g.keep.quality)})</span></span>
+          ${g.remove.map((r) => `<span class="block text-xs text-fg3 truncate" title="${escapeHtml(r.path)}">Move aside: ${escapeHtml(r.filename)} <span class="text-fg4">(${escapeHtml(r.quality)}) · ${escapeHtml(r.reason)}</span></span>`).join("")}
+        </span>
+      </label>
+    </li>`).join("");
+  document.getElementById("dedup-plan").innerHTML = `
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p id="dedup-summary" class="text-xs text-fg2" role="status"></p>
+      <button type="button" id="btn-dedup-apply" data-on-click="dedupApply" class="px-4 py-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black font-semibold text-xs disabled:opacity-40 disabled:cursor-not-allowed"></button>
+    </div>
+    <ul class="space-y-2 max-h-96 overflow-auto pr-1">${rows}</ul>`;
+  dedupToggle();
+}
+
+function dedupSelectedPairs() {
+  const pairs = [];
+  document.querySelectorAll("#dedup-plan .dedup-group:checked").forEach((cb) => {
+    const g = dedupPlanData.groups[Number(cb.dataset.index)];
+    g.remove.forEach((r) => pairs.push({ keep: g.keep.path, remove: r.path, size: r.size_bytes }));
+  });
+  return pairs;
+}
+
+function dedupToggle() {
+  const pairs = dedupSelectedPairs();
+  const bytes = pairs.reduce((n, p) => n + (p.size || 0), 0);
+  const summary = document.getElementById("dedup-summary");
+  const apply = document.getElementById("btn-dedup-apply");
+  if (!summary || !apply) return;
+  const plan = dedupPlanData;
+  summary.textContent = `${pairs.length} of ${plan.file_count} file${plan.file_count === 1 ? "" : "s"} selected · ${UI.fmtBytes(bytes)} can be freed` + (plan.needs_review ? ` · ${plan.needs_review} group${plan.needs_review === 1 ? " is" : "s are"} not included because the copies differ in quality` : "");
+  apply.textContent = `Move ${pairs.length} file${pairs.length === 1 ? "" : "s"} aside…`;
+  apply.disabled = pairs.length === 0;
+}
+
+async function dedupApply() {
+  const pairs = dedupSelectedPairs();
+  if (!pairs.length) return;
+  const bytes = pairs.reduce((n, p) => n + (p.size || 0), 0);
+  const ok = await UI.confirm({
+    title: `Move ${pairs.length} duplicate${pairs.length === 1 ? "" : "s"} aside?`,
+    message: `The best copy of each song stays where it is. The other ${pairs.length} file${pairs.length === 1 ? "" : "s"} (${UI.fmtBytes(bytes)}) go to Downloads → _duplicates_backup. Nothing is deleted and you can undo this.`,
+    confirmText: "Move aside"
+  });
+  if (!ok) return;
+  try {
+    const res = await UI.api("/api/duplicates/resolve/apply", { body: { pairs: pairs.map(({ keep, remove }) => ({ keep, remove })) }, prefix: "Cleanup failed" });
+    const left = res.refused.length ? `\n${res.refused.length} file${res.refused.length === 1 ? " was" : "s were"} left alone: ${res.refused[0].reason}.` : "";
+    UI.toast(`Moved ${res.moved} duplicate${res.moved === 1 ? "" : "s"} aside (${UI.fmtBytes(res.reclaimed_bytes)}).${left}`, res.refused.length ? "warning" : "success", 12000,
+      res.batch_id ? { action: { label: "Undo", onClick: () => dedupUndo(res.batch_id) } } : undefined);
+  } catch (_) { return; }
+  dedupPlanData = null;
+  document.getElementById("dedup-plan").classList.add("hidden");
+  refreshDedupUndo();
+  refreshHashDuplicates();
+  if (typeof refreshLibrary === "function") refreshLibrary();
+}
+
+async function refreshDedupUndo() {
+  const btn = document.getElementById("btn-dedup-undo");
+  if (!btn) return;
+  try {
+    const { last } = await UI.api("/api/duplicates/resolve/last", { quiet: true });
+    btn.classList.toggle("hidden", !last);
+    if (last) {
+      btn.dataset.batch = last.batch_id;
+      btn.textContent = `Undo last cleanup (${last.files} file${last.files === 1 ? "" : "s"})`;
+    }
+  } catch (_) { /* the button simply stays as it was */ }
+}
+
+async function dedupUndo(batchId) {
+  const id = typeof batchId === "string" ? batchId : (document.getElementById("btn-dedup-undo") || {}).dataset?.batch;
+  if (!id) return;
+  try {
+    const res = await UI.api("/api/duplicates/resolve/undo", { body: { batch_id: id }, prefix: "Undo failed" });
+    UI.toast(`Restored ${res.restored} file${res.restored === 1 ? "" : "s"} to where they were.`, "success");
+  } catch (_) { return; }
+  refreshDedupUndo();
+  refreshHashDuplicates();
+  if (typeof refreshLibrary === "function") refreshLibrary();
 }

@@ -1,0 +1,16 @@
+# Normalise text to LF in the repository; check out with the platform default.
+* text=auto
+
+# Never touch these
+*.ico binary
+*.png binary
+*.webp binary
+*.woff2 binary
+*.exe binary
+*.zip binary
+*.db binary
+
+# Windows scripts keep CRLF
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.iss text eol=crlf

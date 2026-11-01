@@ -13,7 +13,7 @@ async function requestStagingPreview() {
 
   const btn = document.getElementById("btn-staging-preview");
   const origHtml = btn.innerHTML;
-  btn.innerHTML = `<span class="animate-pulse">Inspecting & Staging...</span>`;
+  btn.innerHTML = `<span class="">Inspecting & Staging...</span>`;
   btn.disabled = true;
 
   const template = document.getElementById("staging-opt-template")?.value || "{artist} - {title}.{ext}";
@@ -115,14 +115,14 @@ function renderStagingModal(filter = "all") {
       // Collision Pill
       let collisionPill = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-emerald-950/60 text-emerald-400 border border-emerald-800/40">✓ New Destination</span>`;
       if (it.collision_status === "COLLISION_SKIP") {
-        collisionPill = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-amber-950/60 text-amber-300 border border-amber-800/40">⚠ Exists (Skip)</span>`;
+        collisionPill = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-amber-950/60 text-amber-300 border border-amber-800/40">Exists, will skip</span>`;
       } else if (it.collision_status === "COLLISION_OVERWRITE_OR_RENAME") {
-        collisionPill = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-red-950/60 text-red-400 border border-red-800/40">⚡ Overwrite/Rename</span>`;
+        collisionPill = `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-red-950/60 text-red-400 border border-red-800/40">Overwrite or rename</span>`;
       }
 
       // Archive Pill
       let archivePill = it.is_archived
-        ? `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-purple-950/60 text-purple-300 border border-purple-800/40">📁 In Archive</span>`
+        ? `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-s3 text-fg2 border border-line2">In archive</span>`
         : `<span class="px-2 py-0.5 rounded text-2xs font-semibold bg-s2 text-fg3">Fresh</span>`;
 
       return `
@@ -133,7 +133,7 @@ function renderStagingModal(filter = "all") {
           </td>
           <td class="py-2.5 px-3 font-mono text-fg4 text-center">${idx + 1}</td>
           <td class="py-2.5 px-3">
-            <div class="font-bold text-fg truncate max-w-xs">${escapeHtml(it.title)}</div>
+            <div class="font-semibold text-fg truncate max-w-xs">${escapeHtml(it.title)}</div>
             <div class="text-2xs text-fg3 truncate max-w-xs">${escapeHtml(it.artists)}</div>
           </td>
           <td class="py-2.5 px-3 text-fg3 truncate max-w-[140px]">${escapeHtml(it.album || "--")}</td>
@@ -223,7 +223,7 @@ async function commitStagingBatch() {
 
   const btn = document.getElementById("btn-commit-staging");
   const origHtml = btn.innerHTML;
-  btn.innerHTML = `<span class="animate-pulse">Enqueuing ${stagingSelectedIds.size} items...</span>`;
+  btn.innerHTML = `<span class="">Enqueuing ${stagingSelectedIds.size} items...</span>`;
   btn.disabled = true;
   isCommittingStaging = true;
 
@@ -256,7 +256,7 @@ async function commitStagingBatch() {
         <i data-lucide="check-circle" class="w-4 h-4 text-emerald-400"></i>
         <span>Successfully enqueued <strong>${data.enqueued}</strong> tracks into the Download Queue!</span>
       </div>
-      <button data-on-click="switchTab_42a907" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-2xs">
+      <button data-on-click="switchTab_42a907" class="px-3 py-1 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-black font-semibold text-2xs">
         View Queue
       </button>
     `;

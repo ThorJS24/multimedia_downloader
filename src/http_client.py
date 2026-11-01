@@ -4,6 +4,7 @@ Shared outbound HTTP client.
 One pooled session with a stable User-Agent, and one place that implements the platform rules
 from AGENTS.md: honour HTTP 429 / Retry-After, otherwise back off exponentially with jitter.
 """
+from urllib.parse import urlparse
 import logging
 import random
 import threading
@@ -53,6 +54,12 @@ def backoff_seconds(attempt: int, retry_after: Optional[float] = None) -> float:
     return min((2 ** attempt) + random.uniform(0, 0.5), MAX_WAIT_SEC)
 
 
+def safe_url(url: str) -> str:
+    """scheme://host only (plus an ellipsis when there was a path): addresses can carry tokens, so logs never show them."""
+    parsed = urlparse(url)
+    return f"{parsed.scheme}://{parsed.netloc}" + ("/…" if parsed.path not in ("", "/") or parsed.query else "")
+
+
 def request(method: str, url: str, *, retries: int = 3, timeout: float = 10.0, **kwargs: Any) -> requests.Response:
     """
     Perform an HTTP request, retrying on 429/5xx and transient network errors.
@@ -68,13 +75,13 @@ def request(method: str, url: str, *, retries: int = 3, timeout: float = 10.0, *
             if attempt == retries:
                 raise
             wait = backoff_seconds(attempt)
-            logger.warning("%s %s failed (%s); retry %d/%d in %.1fs", method, url, type(exc).__name__, attempt + 1, retries, wait)
+            logger.warning("%s %s failed (%s); retry %d/%d in %.1fs", method, safe_url(url), type(exc).__name__, attempt + 1, retries, wait)
             time.sleep(wait)
             continue
 
         if resp.status_code in RETRY_STATUSES and attempt < retries:
             wait = backoff_seconds(attempt, retry_after_seconds(resp.headers.get("Retry-After")))
-            logger.warning("%s %s -> HTTP %d; retry %d/%d in %.1fs", method, url, resp.status_code, attempt + 1, retries, wait)
+            logger.warning("%s %s -> HTTP %d; retry %d/%d in %.1fs", method, safe_url(url), resp.status_code, attempt + 1, retries, wait)
             resp.close()
             time.sleep(wait)
             continue

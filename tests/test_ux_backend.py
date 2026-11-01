@@ -162,6 +162,269 @@ class TestLibrarySortKeys(unittest.TestCase):
             self.assertIn("files", data)
 
 
+class TestExportsAreNotTruncated(unittest.TestCase):
+    """Regression: exports used to stop silently at 10,000 tracks."""
+
+    def test_a_library_larger_than_the_old_cap_exports_completely(self):
+        from src.db import get_db_connection
+        from src.library_indexer import LibraryIndexer
+        from src.web.server import app
+        conn = get_db_connection()
+        rows = [(f"D:\\bulk\\t{i}.mp3", f"t{i}.mp3", f"Bulk {i}", "Bulk Artist", "Bulk Album", 100, "mp3") for i in range(10_050)]
+        with conn:
+            conn.executemany("INSERT OR REPLACE INTO library_files (path, filename, title, artist, album, duration_sec, format) VALUES (?,?,?,?,?,?,?)", rows)
+
+        def cleanup():
+            with conn:
+                conn.execute("DELETE FROM library_files WHERE path LIKE 'D:\\bulk\\%'")
+        self.addCleanup(cleanup)
+        total = LibraryIndexer.get_library(limit=1)["total"]
+        self.assertGreater(total, 10_000)
+        everything = LibraryIndexer.get_library(limit=None)
+        self.assertEqual(len(everything["files"]), total)                        # None really means "all of it"
+        client = app.test_client()
+        res = client.post("/api/library/export-m3u", json={}).get_json()
+        self.assertEqual(res["track_count"], total)
+        m3u = Path(res["path"])
+        self.addCleanup(lambda: m3u.unlink(missing_ok=True))
+        self.assertEqual(sum(1 for ln in m3u.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("#")), total)
+        audit = client.post("/api/library/export-audit-csv", json={}).get_json()
+        self.assertEqual(audit["exported_count"], total)
+        self.addCleanup(lambda: Path(audit["path"]).unlink(missing_ok=True))
+
+    def test_paging_still_works_for_the_ui(self):
+        from src.library_indexer import LibraryIndexer
+        page = LibraryIndexer.get_library(limit=5, offset=0)
+        self.assertLessEqual(len(page["files"]), 5)
+        self.assertEqual(page["limit"], 5)
+
+
+class TestFailuresAreNotSwallowed(unittest.TestCase):
+    def test_cleanup_reports_files_it_could_not_delete(self):
+        import logging
+        from src.config_loader import TEMP_DIR
+        from src.library_intelligence import LibraryIntelligence
+        ok = TEMP_DIR / "cleanup_ok.tmp"
+        locked = TEMP_DIR / "cleanup_locked.tmp"
+        ok.write_bytes(b"x" * 10)
+        locked.write_bytes(b"y" * 10)
+        self.addCleanup(lambda: (ok.unlink(missing_ok=True), locked.unlink(missing_ok=True)))
+        real_unlink = Path.unlink
+
+        def fake_unlink(self, *a, **k):
+            if self.name == "cleanup_locked.tmp":
+                raise PermissionError("in use")
+            return real_unlink(self, *a, **k)
+
+        with patch.object(Path, "unlink", fake_unlink), self.assertLogs("LibraryIntelligence", level=logging.WARNING) as logs:
+            res = LibraryIntelligence.cleanup_temp_buffers()
+        self.assertGreaterEqual(res["failed_files"], 1)
+        self.assertTrue(any("cleanup_locked.tmp" in m for m in logs.output))      # surfaced as a warning, not buried at debug
+
+    def test_no_generic_suppressed_exception_messages_remain(self):
+        root = Path(__file__).resolve().parent.parent / "src"
+        offenders = [str(p.relative_to(root)) for p in root.rglob("*.py") if 'logger.debug("Suppressed exception"' in p.read_text(encoding="utf-8")]
+        self.assertEqual(offenders, [], "every swallowed exception must say what failed")
+
+    def test_rules_rollback_says_when_it_could_not_keep_a_conflict_copy(self):
+        text = (Path(__file__).resolve().parent.parent / "src" / "rules_engine.py").read_text(encoding="utf-8")
+        self.assertIn("Could NOT save a conflict copy", text)
+
+
+class TestBackupRestore(unittest.TestCase):
+    """A restore is staged, validated and applied at the next start; the database it replaces is saved first."""
+
+    def setUp(self):
+        from src import backup_service
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.data = Path(self._tmp.name)
+        (self.data / "data" / "backups").mkdir(parents=True)
+        # Only the backup service is pointed at the scratch folder; the process-wide database is never redirected.
+        for target, value in (("BACKUPS_DIR", self.data / "data" / "backups"), ("_data_dir", lambda: self.data / "data")):
+            patcher = patch.object(backup_service, target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        import sqlite3
+        self.sqlite3 = sqlite3
+        self.live = self.data / "data" / "studio.db"
+        self.make_db(self.live, "live")
+        self.backup = self.data / "data" / "backups" / "studio_manual_20260101_000000.db"
+        self.make_db(self.backup, "from-backup")
+
+    def make_db(self, path, marker, with_schema=True):
+        conn = self.sqlite3.connect(str(path))
+        with conn:
+            if with_schema:
+                conn.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY)")
+            conn.execute("CREATE TABLE marker (v TEXT)")
+            conn.execute("INSERT INTO marker VALUES (?)", (marker,))
+        conn.close()
+
+    def marker(self, path):
+        conn = self.sqlite3.connect(str(path))
+        try:
+            return conn.execute("SELECT v FROM marker").fetchone()[0]
+        finally:
+            conn.close()
+
+    def test_restore_is_staged_and_applied_on_next_start_after_saving_the_current_database(self):
+        from src.backup_service import BackupService
+        from src.db import apply_pending_restore
+        info = BackupService.stage_restore(self.backup.name)
+        self.assertEqual(info["source"], self.backup.name)
+        self.assertEqual(self.marker(self.live), "live")                       # staging alone changes nothing
+        self.assertEqual(BackupService.pending_restore()["source"], self.backup.name)
+
+        result = apply_pending_restore(self.live)
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(self.marker(self.live), "from-backup")
+        saved = self.data / "data" / "backups" / result["saved_previous_as"]
+        self.assertEqual(self.marker(saved), "live")                           # the replaced database is recoverable
+        self.assertIsNone(BackupService.pending_restore())
+        self.assertTrue(BackupService.last_restore()["ok"])
+        BackupService.dismiss_last_restore()
+        self.assertIsNone(BackupService.last_restore())
+        self.assertIsNone(apply_pending_restore(self.live))                    # nothing staged -> nothing happens
+
+    def test_cancelling_leaves_the_database_alone(self):
+        from src.backup_service import BackupService
+        from src.db import apply_pending_restore
+        BackupService.stage_restore(self.backup.name)
+        self.assertTrue(BackupService.cancel_restore())
+        self.assertFalse(BackupService.cancel_restore())
+        self.assertIsNone(apply_pending_restore(self.live))
+        self.assertEqual(self.marker(self.live), "live")
+
+    def test_only_listed_backups_can_be_restored(self):
+        from src.backup_service import BackupService
+        for bad in ("../studio.db", "..\\studio.db", str(self.live), "missing.db", ""):
+            with self.assertRaises(ValueError, msg=bad):
+                BackupService.stage_restore(bad)
+        self.assertIsNone(BackupService.pending_restore())
+
+    def test_damaged_or_foreign_files_are_refused(self):
+        from src.backup_service import BackupService
+        (self.data / "data" / "backups" / "studio_manual_garbage.db").write_bytes(b"this is not sqlite" * 50)
+        with self.assertRaises(ValueError):
+            BackupService.stage_restore("studio_manual_garbage.db")
+        self.make_db(self.data / "data" / "backups" / "studio_manual_other.db", "x", with_schema=False)
+        with self.assertRaises(ValueError) as ctx:
+            BackupService.stage_restore("studio_manual_other.db")
+        self.assertIn("not a Spotify Downloader Studio backup", str(ctx.exception))
+        self.assertIsNone(BackupService.pending_restore())
+
+    def test_a_bad_staged_file_never_replaces_the_live_database(self):
+        from src.backup_service import BackupService
+        from src.db import RESTORE_PENDING, apply_pending_restore
+        (self.data / "data" / RESTORE_PENDING).write_bytes(b"corrupt" * 100)
+        result = apply_pending_restore(self.live)
+        self.assertFalse(result["ok"])
+        self.assertTrue(result["error"])
+        self.assertEqual(self.marker(self.live), "live")
+        self.assertIsNone(BackupService.pending_restore())                     # not retried forever
+        self.assertFalse(BackupService.last_restore()["ok"])
+
+    def test_routes_stage_report_and_cancel(self):
+        from src.web.server import app
+        client = app.test_client()
+        audit = patch("src.web.routes.system.record_audit")
+        audit.start()
+        self.addCleanup(audit.stop)
+        self.assertEqual(client.post("/api/backups/restore", json={}).status_code, 400)
+        self.assertEqual(client.post("/api/backups/restore", json={"filename": "../studio.db"}).status_code, 400)
+        res = client.post("/api/backups/restore", json={"filename": self.backup.name})
+        self.assertEqual(res.status_code, 200, res.get_json())
+        listing = client.get("/api/backups/list").get_json()
+        self.assertEqual(listing["pending"]["source"], self.backup.name)
+        self.assertIn(self.backup.name, [b["filename"] for b in listing["backups"]])
+        self.assertTrue(client.post("/api/backups/restore/cancel").get_json()["cancelled"])
+        self.assertIsNone(client.get("/api/backups/list").get_json()["pending"])
+
+
+class TestDownloadHistory(unittest.TestCase):
+    """Finished downloads stay searchable after they are cleared from the queue; they can be queued again."""
+
+    PREFIX = "histtest_"
+
+    def setUp(self):
+        import time
+        from src.db import get_db_connection
+        from src.web.server import app
+        self.client = app.test_client()
+        self.conn = get_db_connection()
+        now = time.time()
+        self.real_file = Path(tempfile.mkdtemp()) / "song.mp3"
+        self.real_file.write_bytes(b"x")
+        rows = [
+            (f"{self.PREFIX}1", "trk_a", "Blue Monday", "New Order, Someone", "Power", "COMPLETED", str(self.real_file), "", "Synth Mix", now - 100),
+            (f"{self.PREFIX}2", "trk_b", "100% Pure_Love", "Crystal Waters", "Surprise", "FAILED", "", "No match found", "", now - 50),
+            (f"{self.PREFIX}3", "trk_c", "Queued Song", "Nobody", "Nothing", "QUEUED", "", "", "", now - 10),
+            (f"{self.PREFIX}4", "trk_d", "Gone", "Ghost", "Vanished", "COMPLETED", "D:\\nowhere\\gone.mp3", "", "", now - 200),
+        ]
+        with self.conn:
+            for jid, tid, title, artists, album, status, out, err, coll, ts in rows:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO jobs (id, track_id, title, artists, album, status, output_path, error, collection_name, added_at, completed_at) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?)", (jid, tid, title, artists, album, status, out, err, coll, ts, None if status == "QUEUED" else ts))
+        self.addCleanup(self.cleanup)
+
+    def cleanup(self):
+        with self.conn:
+            self.conn.execute("DELETE FROM jobs WHERE id LIKE ?", (self.PREFIX + "%",))
+        self.real_file.unlink(missing_ok=True)
+        self.real_file.parent.rmdir()
+
+    def history(self, **params):
+        data = self.client.get("/api/history", query_string=dict(limit=200, **params)).get_json()
+        return [i for i in data["items"] if i["id"].startswith(self.PREFIX)], data
+
+    def test_lists_only_finished_downloads_newest_first(self):
+        items, data = self.history()
+        self.assertEqual([i["id"] for i in items], [f"{self.PREFIX}2", f"{self.PREFIX}1", f"{self.PREFIX}4"])   # QUEUED is not history
+        self.assertGreaterEqual(data["total"], 3)
+
+    def test_search_covers_title_artist_album_and_playlist_and_treats_wildcards_literally(self):
+        self.assertEqual([i["id"] for i in self.history(q="blue monday")[0]], [f"{self.PREFIX}1"])
+        self.assertEqual([i["id"] for i in self.history(q="Crystal")[0]], [f"{self.PREFIX}2"])
+        self.assertEqual([i["id"] for i in self.history(q="Vanished")[0]], [f"{self.PREFIX}4"])
+        self.assertEqual([i["id"] for i in self.history(q="Synth Mix")[0]], [f"{self.PREFIX}1"])
+        self.assertEqual([i["id"] for i in self.history(q="100%")[0]], [f"{self.PREFIX}2"])
+        self.assertEqual(self.history(q="%")[1]["total"] >= 1, True)
+        self.assertEqual([i["id"] for i in self.history(q="Pure_L")[0]], [f"{self.PREFIX}2"])      # "_" is not "any character"
+        self.assertEqual(self.history(q="PureXLove")[0], [])
+
+    def test_status_filter_and_file_presence(self):
+        failed, _ = self.history(status="failed")
+        self.assertEqual([i["id"] for i in failed], [f"{self.PREFIX}2"])
+        self.assertEqual(failed[0]["error"], "No match found")
+        done = {i["id"]: i for i in self.history(status="COMPLETED")[0]}
+        self.assertTrue(done[f"{self.PREFIX}1"]["file_exists"])
+        self.assertFalse(done[f"{self.PREFIX}4"]["file_exists"])                    # moved or deleted since
+
+    def test_paging(self):
+        page = self.client.get("/api/history", query_string={"limit": 1, "offset": 0}).get_json()
+        self.assertEqual(len(page["items"]), 1)
+        self.assertGreaterEqual(page["total"], 3)
+        self.assertEqual(self.client.get("/api/history", query_string={"limit": "9999"}).get_json()["limit"], 200)
+
+    def test_redownload_queues_the_track_again_once(self):
+        from types import SimpleNamespace
+        from src.web.state import queue_manager
+        with patch("src.web.routes.downloads.record_audit"), patch.object(queue_manager, "add_job") as add_job:
+            res = self.client.post("/api/history/redownload", json={"job_id": f"{self.PREFIX}1"})
+            self.assertEqual(res.status_code, 200, res.get_json())
+            track = add_job.call_args.args[0]
+            self.assertEqual((track["id"], track["title"], track["artists"], track["album"]), ("trk_a", "Blue Monday", ["New Order", "Someone"], "Power"))
+            self.assertEqual(add_job.call_args.kwargs["collection_name"], "Synth Mix")
+            waiting = SimpleNamespace(track_id="trk_a", status="QUEUED")
+            with patch.object(queue_manager, "jobs", [waiting]):
+                again = self.client.post("/api/history/redownload", json={"job_id": f"{self.PREFIX}1"})
+            self.assertEqual(again.status_code, 409)                                # already waiting
+            self.assertEqual(add_job.call_count, 1)
+        self.assertEqual(self.client.post("/api/history/redownload", json={"job_id": "nope"}).status_code, 404)
+        self.assertEqual(self.client.post("/api/history/redownload", json={}).status_code, 404)
+
 class TestM3UExportContract(unittest.TestCase):
     """The album/playlist pages send playlist_name and read track_count; the server must honour both."""
 

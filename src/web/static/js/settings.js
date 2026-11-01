@@ -4,6 +4,7 @@
 const SECRET_MASK = "********";
 let settingsBaseline = {};
 let settingsLoaded = false;
+let releaseFeedUrl = "";
 
 function settingInputs() {
   return Array.from(document.querySelectorAll("#settings-form [data-setting]"));
@@ -60,6 +61,15 @@ function refreshSettingsDerived() {
     prev.textContent = tmpl.value.replace(/\{(\w+)\}/g, (m, k) => (k in sample ? sample[k] : m));
   }
 
+  const days = document.getElementById("cfg-schedule-days");
+  if (days) {
+    const enabled = document.getElementById("cfg-schedule-enabled");
+    const err = document.getElementById("cfg-days-error");
+    if (err) err.classList.toggle("hidden", !(days.value.trim() === "" && enabled && enabled.checked));
+    const fields = document.getElementById("schedule-fields");
+    if (fields && enabled) fields.classList.toggle("opacity-50", !enabled.checked);
+  }
+
   const min = document.getElementById("cfg-min-delay");
   const max = document.getElementById("cfg-max-delay");
   const err = document.getElementById("cfg-delay-error");
@@ -89,6 +99,7 @@ async function loadSettings(force = false) {
 
     const ver = document.getElementById("update-current-version");
     if (ver) ver.textContent = data.version || "--";
+    releaseFeedUrl = data.release_feed_url || "";
 
     if (settingsLoaded && !force && dirtySettingKeys().length) return; // never clobber unsaved edits
 
@@ -97,6 +108,7 @@ async function loadSettings(force = false) {
       const v = (s[section] || {})[key];
       writeSettingInput(el, v);
     });
+    syncScheduleDayBoxes();
     settingsBaseline = collectSettings();
     settingsLoaded = true;
 
@@ -112,6 +124,32 @@ async function loadSettings(force = false) {
   } catch (err) {
     console.error("Load settings error:", err);
   }
+}
+
+// The schedule's day boxes feed one hidden value ("mon,tue,...") so the generic save path handles it.
+// The boxes are the source of truth while you click; they are only copied *from* the value when settings load.
+function syncScheduleDayBoxes() {
+  const hidden = document.getElementById("cfg-schedule-days");
+  if (!hidden) return;
+  const on = new Set(hidden.value.split(",").map((d) => d.trim()).filter(Boolean));
+  document.querySelectorAll(".schedule-day").forEach((cb) => { cb.checked = on.has(cb.value); });
+}
+
+function scheduleDaysChanged() {
+  const hidden = document.getElementById("cfg-schedule-days");
+  if (!hidden) return;
+  hidden.value = Array.from(document.querySelectorAll(".schedule-day:checked")).map((cb) => cb.value).join(",");
+  refreshSettingsDerived();
+  updateDirtyState();
+}
+
+// Fills the update-feed box with the address the release pipeline publishes to (still opt-in: nothing is contacted until you save and check).
+function useReleaseFeed() {
+  const input = document.getElementById("cfg-update-feed-url");
+  if (!input || !releaseFeedUrl) return;
+  input.value = releaseFeedUrl;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  UI.toast("Address filled in. Save your changes, then press Check now.", "info", 3500);
 }
 
 function discardSettings() {
@@ -336,7 +374,7 @@ function logLineEl(data) {
   line.className = `log-line log-${String(data.level).replace(/[^A-Za-z]/g, "")} flex space-x-2 text-xs select-text`;
   line.innerHTML = `
     <span class="text-fg4 font-mono shrink-0">[${escapeHtml(data.timestamp)}]</span>
-    <span class="text-xs uppercase font-bold shrink-0 w-16 ${getLevelColor(data.level)}">${escapeHtml(data.level)}</span>
+    <span class="text-xs uppercase font-semibold shrink-0 w-16 ${getLevelColor(data.level)}">${escapeHtml(data.level)}</span>
     <span class="text-fg2 break-all">${escapeHtml(data.message)}</span>`;
   return line;
 }
@@ -385,7 +423,8 @@ function startLogStream() {
   if (!terminal) return;
   const evtSource = new EventSource("/api/logs/stream");
 
-  evtSource.onmessage = (e) => {
+  // The server sends named events ("event: log"), which onmessage never receives: listen for them by name.
+  const onLogEvent = (e) => {
     try {
       const data = JSON.parse(e.data);
       logBuffer.push(data);
@@ -398,6 +437,8 @@ function startLogStream() {
       console.error("Log parsing error:", err);
     }
   };
+  evtSource.addEventListener("log", onLogEvent);
+  evtSource.onmessage = onLogEvent;      // unnamed events, if a future server sends them
   evtSource.onerror = () => { /* EventSource reconnects by itself; the connection banner covers real outages */ };
 }
 
@@ -420,6 +461,23 @@ async function exportDiagnostics() {
     const res = await UI.api("/api/diagnostics/export", { prefix: "Could not export diagnostics" });
     downloadBlob(`spotify_studio_diagnostics_${Date.now()}.json`, "application/json", JSON.stringify(res, null, 2));
     UI.toast("Diagnostics exported. Secrets are masked in the file.", "success");
+  } catch (_) { /* reported */ }
+}
+
+async function copyDiagnosticsSummary() {
+  try {
+    const res = await fetch("/api/diagnostics/export?format=markdown");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const ok = await UI.copy(await res.text());
+    UI.toast(ok ? "Summary copied. Paste it into your bug report." : "Couldn't copy to the clipboard.", ok ? "success" : "error", 2500);
+  } catch (err) { UI.toast(`Couldn't build the summary: ${err.message}`, "error"); }
+}
+
+async function createSupportBundle() {
+  try {
+    const res = await UI.api("/api/diagnostics/bundle", { method: "POST", prefix: "Couldn't create the bundle" });
+    UI.toast(`Support bundle saved (${UI.fmtBytes(res.size)}).\nAddresses, secrets and your Windows user name are removed. Read it before you share it.`, "success", 12000,
+      { action: { label: "Show in folder", onClick: () => UI.api("/api/system/reveal", { body: { path: res.path }, prefix: "Could not open the folder" }) } });
   } catch (_) { /* reported */ }
 }
 
@@ -487,7 +545,7 @@ async function checkInitialReadiness() {
 }
 
 const WIZARD_STEPS = [
-  { title: "Welcome to Spotify Downloader Studio", sub: "First, a quick check that everything this app needs is in place." },
+  { title: "Set up Spotify Downloader Studio", sub: "First, a quick check that everything this app needs is in place." },
   { title: "How downloading works", sub: "A few things worth knowing before you start." },
   { title: "Choose a home for your music", sub: "Last step: pick where finished downloads are saved." }
 ];

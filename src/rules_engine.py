@@ -528,9 +528,11 @@ class RulesEngine:
                 conflict_path = dst.parent / conflict_name
                 try:
                     shutil.copy2(str(dst), str(conflict_path))
+                    kept = f"Preserved conflict copy '{conflict_name}'"
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
-                msg = f"Conflict: Destination '{dst.name}' was modified after operation. Preserved conflict copy '{conflict_name}' and aborted rollback for manual resolution."
+                    logger.error("Could not save a conflict copy of %s", dst, exc_info=True)
+                    kept = "Could NOT save a conflict copy (see the log)"
+                msg = f"Conflict: Destination '{dst.name}' was modified after operation. {kept} and aborted rollback for manual resolution."
                 logger.warning(msg)
                 errors.append(msg)
                 continue
@@ -579,6 +581,19 @@ class RulesEngine:
             "reverted_count": reverted_count,
             "errors": errors
         }
+
+    @classmethod
+    def get_batches(cls, limit: int = 20) -> List[Dict[str, Any]]:
+        """One row per executed batch (newest first) so a whole batch can be undone in one step."""
+        conn = get_db_connection()
+        rows = conn.execute(
+            """SELECT batch_id, MIN(timestamp) AS started_at, COUNT(*) AS total,
+                      SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) AS moved,
+                      SUM(CASE WHEN status = 'ROLLED_BACK' THEN 1 ELSE 0 END) AS rolled_back
+               FROM rules_execution_log GROUP BY batch_id ORDER BY started_at DESC LIMIT ?""",
+            (limit,)
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     @classmethod
     def get_history(cls, limit: int = 50) -> List[Dict[str, Any]]:

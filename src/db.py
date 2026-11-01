@@ -1,9 +1,11 @@
+import json
 import logging
+import os
 import sqlite3
 import threading
 import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.config_loader import get_data_dir
 
@@ -41,7 +43,7 @@ def get_db_connection() -> sqlite3.Connection:
             try:
                 _local.conn.close()
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("Closing the previous database connection failed (switching database file)", exc_info=True)
             _local.conn = None
 
     if not hasattr(_local, "conn") or _local.conn is None:
@@ -63,7 +65,7 @@ def close_db_connection():
         try:
             _local.conn.close()
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Closing the database connection failed", exc_info=True)
         _local.conn = None
         _local.conn_path = None
 
@@ -505,7 +507,22 @@ MIGRATIONS: List[Tuple[int, str, str]] = [
         ALTER TABLE release_calendar_new RENAME TO release_calendar;
         CREATE INDEX IF NOT EXISTS idx_release_calendar_detected ON release_calendar (detected_at);
         """
-    )
+    ),
+    (
+        12,
+        "plugin_packs",
+        """
+        CREATE TABLE IF NOT EXISTS plugin_packs (
+            id TEXT PRIMARY KEY,
+            source TEXT NOT NULL DEFAULT 'bundled',
+            enabled INTEGER NOT NULL DEFAULT 0,
+            config_json TEXT NOT NULL DEFAULT '{}',
+            manifest_json TEXT,
+            installed_at REAL,
+            last_status_json TEXT
+        );
+        """
+    ),
 ]
 
 
@@ -569,7 +586,71 @@ def recover_stale_jobs() -> int:
         return 0
 
 
+# A restore is staged next to the database and swapped in on the next start, before any connection exists
+# (replacing a live WAL database underneath running threads would corrupt it).
+RESTORE_PENDING = "restore_pending.db"
+RESTORE_PENDING_INFO = "restore_pending.json"
+RESTORE_RESULT = "restore_result.json"
+
+
+def apply_pending_restore(db_path: Optional[Path] = None) -> Optional[Dict[str, Any]]:
+    """Swap a staged backup in as the live database. The database being replaced is saved first, so a restore
+    can itself be undone. Returns what happened (also written to restore_result.json), or None when nothing was staged."""
+    db_path = db_path or get_db_path()
+    pending = db_path.parent / RESTORE_PENDING
+    info_path = db_path.parent / RESTORE_PENDING_INFO
+    if not pending.exists():
+        return None
+    result: Dict[str, Any] = {"at": time.time(), "ok": False, "source": None, "saved_previous_as": None, "error": None}
+    try:
+        if info_path.exists():
+            result["source"] = json.loads(info_path.read_text(encoding="utf-8")).get("source")
+        probe = sqlite3.connect(f"file:{pending.as_posix()}?mode=ro", uri=True)
+        try:
+            status = probe.execute("PRAGMA integrity_check").fetchone()[0]
+            has_schema = probe.execute("SELECT 1 FROM sqlite_master WHERE name = 'schema_migrations'").fetchone()
+        finally:
+            probe.close()
+        if status != "ok" or not has_schema:
+            raise ValueError(f"The staged backup failed its integrity check ({status if status != 'ok' else 'not a Studio database'})")
+
+        if db_path.exists():
+            backups = db_path.parent / "backups"
+            backups.mkdir(parents=True, exist_ok=True)
+            saved = backups / f"studio_prerestore_{time.strftime('%Y%m%d_%H%M%S')}.db"
+            src_conn = sqlite3.connect(str(db_path))           # the backup API also captures what is still in the WAL
+            try:
+                dest_conn = sqlite3.connect(str(saved))
+                try:
+                    src_conn.backup(dest_conn)
+                finally:
+                    dest_conn.close()
+            finally:
+                src_conn.close()
+            result["saved_previous_as"] = saved.name
+        for suffix in ("", "-wal", "-shm"):
+            Path(str(db_path) + suffix).unlink(missing_ok=True)
+        os.replace(pending, db_path)
+        result["ok"] = True
+        logger.info("Restored the database from %s", result["source"])
+    except Exception as e:
+        result["error"] = str(e)
+        logger.error("Staged database restore was not applied: %s", e, exc_info=True)
+        try:
+            pending.replace(pending.with_name("restore_failed.db"))
+        except OSError:
+            logger.warning("Could not set the failed staged restore aside", exc_info=True)
+    finally:
+        info_path.unlink(missing_ok=True)
+        try:
+            (db_path.parent / RESTORE_RESULT).write_text(json.dumps(result), encoding="utf-8")
+        except OSError:
+            logger.warning("Could not record the restore result", exc_info=True)
+    return result
+
+
 # Call on import to guarantee schema presence and recovery
+apply_pending_restore()
 init_db()
 recover_stale_jobs()
 

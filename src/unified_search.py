@@ -154,7 +154,7 @@ class UnifiedSearchService:
                     )
                     aggregated_categories["tracks"].insert(0, local_item.to_dict())
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.warning("Local library search failed; results will not include local tracks", exc_info=True)
 
         # The capability resolver is the single source of truth for what each item can really do
         # (play / embed / queue / download); it overrides whatever a provider guessed inline.

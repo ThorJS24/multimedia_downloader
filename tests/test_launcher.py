@@ -25,7 +25,7 @@ def run_main(*argv):
 class TestLauncher(unittest.TestCase):
     def test_no_arguments_opens_the_desktop_app_immediately(self):
         app = run_main()
-        app.assert_called_once_with(port=None, use_browser=False, headless=False)
+        app.assert_called_once_with(port=None, use_browser=False, headless=False, url_file=None)
         app.return_value.launch.assert_called_once()
 
     def test_browser_and_headless_switches_still_work(self):
@@ -34,6 +34,15 @@ class TestLauncher(unittest.TestCase):
         self.assertTrue(run_main("--no-browser").call_args.kwargs["headless"])
         self.assertTrue(run_main("web", "--no-browser").call_args.kwargs["headless"])
         self.assertEqual(run_main("web", "--port", "5123").call_args.kwargs["port"], 5123)
+
+    def test_the_startup_address_file_must_stay_inside_the_data_folder(self):
+        with self.assertRaises(SystemExit) as ctx, patch("sys.stderr"):
+            run_main("web", "--headless", "--url-file", "C:\\Windows\\startup-url.txt")
+        self.assertEqual(ctx.exception.code, 2)
+        from src.config_loader import get_data_dir
+        inside = get_data_dir() / "startup-url.txt"
+        app = run_main("web", "--headless", "--url-file", str(inside))
+        self.assertEqual(app.call_args.kwargs["url_file"], str(inside.resolve()))
 
     def test_the_cli_menu_and_commands_are_gone(self):
         for name in ("interactive_menu", "show_banner", "cmd_login", "cmd_playlist", "cmd_track", "cmd_info", "cmd_status"):

@@ -46,9 +46,20 @@ from src.version import VERSION_LABEL  # noqa: E402
 setup_logging()
 
 
-def cmd_web(port=None, use_browser=False, headless=False):
+def cmd_web(port=None, use_browser=False, headless=False, url_file=None):
     from src.desktop_shell import DesktopApp
-    DesktopApp(port=port, use_browser=use_browser, headless=headless).launch()
+    DesktopApp(port=port, use_browser=use_browser, headless=headless, url_file=url_file).launch()
+
+
+def _checked_url_file(parser, value):
+    """--url-file is for automated checks (the packaged app has no console to print the address to). Like
+    everything else the app writes, it must stay inside the application's data folder."""
+    from src.config_loader import get_data_dir
+    path = Path(value).resolve()
+    roots = (get_data_dir().resolve(), PROJECT_ROOT.resolve())
+    if not any(path == r or path.is_relative_to(r) for r in roots):
+        parser.error("--url-file must be a path inside the application's data folder")
+    return str(path)
 
 
 def cmd_diagnostics():
@@ -98,6 +109,8 @@ def main():
     w_parser = subparsers.add_parser("web", help="Launch the desktop app (same as running with no command)")
     w_parser.add_argument("--port", type=int, default=None, help="Specific port to bind (default: dynamic free port)")
     w_parser.add_argument("--browser", action="store_true", help="Force launch in web browser")
+    w_parser.add_argument("--url-file", type=str, default=None,
+                          help="With --headless: write the address (including its session token) to this file once the server is ready")
     w_parser.add_argument("--headless", "--no-browser", dest="web_headless", action="store_true",
                           help="Run the local server without a GUI (--no-browser is an alias)")
 
@@ -116,7 +129,8 @@ def main():
     if args.command == "mcp":
         cmd_mcp(args.transport, args.port)
     elif args.command == "web":
-        cmd_web(port=args.port, use_browser=(args.browser and not headless), headless=headless)
+        url_file = _checked_url_file(parser, args.url_file) if args.url_file else None
+        cmd_web(port=args.port, use_browser=(args.browser and not headless), headless=headless, url_file=url_file)
     else:
         # No command: open the application directly (desktop window; browser/headless only if asked).
         cmd_web(port=None, use_browser=(args.browser and not headless), headless=headless)

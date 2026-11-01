@@ -37,7 +37,7 @@ class SingleInstanceLock:
                 self.is_primary = True
                 return True
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.warning("Creating the single-instance mutex failed; falling back to a PID lock file", exc_info=True)
 
         # Fallback to PID lockfile
         try:
@@ -53,7 +53,7 @@ class SingleInstanceLock:
                             self.is_primary = False
                             return False
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    logger.debug("Instance-lock process probe failed", exc_info=True)
 
             LOCK_FILE_PATH.write_text(str(os.getpid()))
             self.is_primary = True
@@ -69,13 +69,13 @@ class SingleInstanceLock:
                 ctypes.windll.kernel32.CloseHandle(self.mutex_handle)
                 self.mutex_handle = None
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("Releasing the instance mutex failed", exc_info=True)
 
         if LOCK_FILE_PATH.exists() and self.is_primary:
             try:
                 LOCK_FILE_PATH.unlink()
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("Removing the instance lock file failed", exc_info=True)
 
 
 # Global singleton lock

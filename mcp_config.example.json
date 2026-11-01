@@ -1,9 +1,9 @@
 {
   "mcpServers": {
     "spotify-downloader-studio": {
-      "command": "d:\\mini-projects\\Spotify_playlist_downloader\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\to\\Spotify_playlist_downloader\\.venv\\Scripts\\python.exe",
       "args": [
-        "d:\\mini-projects\\Spotify_playlist_downloader\\main.py",
+        "C:\\path\\to\\Spotify_playlist_downloader\\main.py",
         "mcp"
       ],
       "env": {

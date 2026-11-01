@@ -1,8 +1,8 @@
-# Windows Installation Guide — Spotify Downloader Studio v2.0.0
+# Windows Installation Guide — Spotify Downloader Studio v2.1.0
 
 ## Overview
 Spotify Downloader Studio provides two flexible distribution modes for Windows 10 and Windows 11 (x64):
-1. **Windows Installer (`SpotifyDownloader-v2.0.0-Setup.exe`)**: Recommended for everyday desktop use. Standard per-user installation without requiring UAC administrator elevation.
+1. **Windows Installer (`SpotifyDownloader-v2.1.0-Setup.exe`)**: Recommended for everyday desktop use. Standard per-user installation without requiring UAC administrator elevation.
 2. **Portable Distribution (`SpotifyDownloader-v2.0.0-Windows-x64.zip`)**: Recommended for portable USB drives or environments requiring zero writes to the primary `C:` drive.
 
 ---
@@ -12,8 +12,8 @@ Spotify Downloader Studio provides two flexible distribution modes for Windows 1
 - **Processor:** 64-bit Intel / AMD processor
 - **RAM:** Minimum 2 GB (4 GB recommended)
 - **Disk Space:** 
-  - Standard Installation: ~450 MB program files, dynamic storage for downloaded music
-  - Portable Installation: ~450 MB standalone folder
+  - Standard Installation: ~290 MB program files (the installer download is ~93 MB), plus space for downloaded music
+  - Portable Installation: ~290 MB standalone folder (the zip is ~116 MB)
 - **Runtimes:** Microsoft Edge WebView2 (pre-installed on Windows 10/11)
 
 ---
@@ -21,7 +21,7 @@ Spotify Downloader Studio provides two flexible distribution modes for Windows 1
 ## 2. Standard Windows Installation (Recommended)
 
 ### Interactive Setup
-1. Download `SpotifyDownloader-v2.0.0-Setup.exe`.
+1. Download `SpotifyDownloader-v2.1.0-Setup.exe`.
 2. Double-click the installer. No administrator prompt is required.
 3. Select installation options:
    - Target Directory (defaults to `%LOCALAPPDATA%\Programs\Spotify Downloader Studio`).
@@ -32,12 +32,12 @@ Spotify Downloader Studio provides two flexible distribution modes for Windows 1
 ### Silent / Unattended Installation
 For automated deployments or enterprise scripting, run:
 ```powershell
-.\SpotifyDownloader-v2.0.0-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+.\SpotifyDownloader-v2.1.0-Setup.exe /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
 ```
 
 To install silently with a custom destination:
 ```powershell
-.\SpotifyDownloader-v2.0.0-Setup.exe /VERYSILENT /DIR="D:\Custom\SpotifyStudio"
+.\SpotifyDownloader-v2.1.0-Setup.exe /VERYSILENT /DIR="D:\Custom\SpotifyStudio"
 ```
 
 ---

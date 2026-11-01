@@ -207,9 +207,38 @@ class LibraryRepository:
 
 
 class JobRepository:
+    FINISHED = ("COMPLETED", "FAILED", "CANCELLED", "SKIPPED")
+
     @staticmethod
     def completed_count() -> int:
         return get_db_connection().execute("SELECT COUNT(*) FROM jobs WHERE status = 'COMPLETED'").fetchone()[0]
+
+    @staticmethod
+    def history(query: str = "", status: str = "", limit: int = 50, offset: int = 0) -> Tuple[List[sqlite3.Row], int]:
+        """Finished downloads, newest first, optionally narrowed by text (title/artist/album/playlist) and one status."""
+        where = [f"status IN ({','.join('?' * len(JobRepository.FINISHED))})"]
+        args: list = list(JobRepository.FINISHED)
+        if status in JobRepository.FINISHED:
+            where = ["status = ?"]
+            args = [status]
+        if query:
+            p = like_pattern(query)
+            where.append("(title LIKE ? ESCAPE '\\' OR artists LIKE ? ESCAPE '\\' OR album LIKE ? ESCAPE '\\' OR collection_name LIKE ? ESCAPE '\\')")
+            args += [p, p, p, p]
+        clause = " AND ".join(where)
+        conn = get_db_connection()
+        total = conn.execute(f"SELECT COUNT(*) FROM jobs WHERE {clause}", args).fetchone()[0]
+        rows = conn.execute(
+            f"""SELECT id, track_id, title, artists, album, duration_ms, cover_url, isrc, year, status, error, output_path,
+                       collection_name, added_at, completed_at, provider, provider_item_id, canonical_url
+                FROM jobs WHERE {clause}
+                ORDER BY COALESCE(completed_at, added_at) DESC, id DESC LIMIT ? OFFSET ?""", args + [limit, offset]
+        ).fetchall()
+        return rows, total
+
+    @staticmethod
+    def get(job_id: str) -> Optional[sqlite3.Row]:
+        return get_db_connection().execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
 
 
 class StagingRepository:

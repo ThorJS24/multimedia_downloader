@@ -61,7 +61,7 @@ class SpotifyProvider(MusicProvider):
         if self.web_api.has_web_api():
             try:
                 types = "track,album,artist,playlist"
-                sp_res = self.web_api.sp.search(q=query, type=types, limit=limit)
+                sp_res = self.web_api.client().search(q=query, type=types, limit=limit)
 
                 # Tracks
                 for t in sp_res.get("tracks", {}).get("items", []):

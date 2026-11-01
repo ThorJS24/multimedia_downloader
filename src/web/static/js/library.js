@@ -20,7 +20,7 @@ function renderMatchResult(track, rows) {
   const pct = best ? Math.round(best.confidence * 100) : 0;
   const badge = document.getElementById("match-confidence-badge");
   badge.innerText = best ? `${pct}% match` : "No candidates";
-  badge.className = `px-3 py-1 rounded-full text-xs font-bold font-mono ${best ? scorePillClass(pct) : "bg-s3 text-fg3"}`;
+  badge.className = `px-3 py-1 rounded-full text-xs font-semibold font-mono ${best ? scorePillClass(pct) : "bg-s3 text-fg3"}`;
 
   document.getElementById("match-exp-title").innerText = track.title || "--";
   document.getElementById("match-exp-artist").innerText = (track.artists || []).join(", ") || "--";
@@ -40,7 +40,7 @@ function renderMatchResult(track, rows) {
           <div class="text-fg3 truncate">${escapeHtml(r.source)}${r.duration ? " · " + UI.fmtDuration(r.duration) : ""}${r.outcome ? " · " + escapeHtml(r.outcome.replace(/_/g, " ").toLowerCase()) : ""}</div>
           ${r.explanation ? `<div class="text-fg4 italic truncate" title="${escapeHtml(r.explanation)}">${escapeHtml(r.explanation)}</div>` : ""}
         </div>
-        <span class="px-2.5 py-1 rounded-full font-mono font-bold ${scorePillClass(p)}">${p}%</span>
+        <span class="px-2.5 py-1 rounded-full font-mono font-semibold ${scorePillClass(p)}">${p}%</span>
       </li>`;
   }).join("");
   UI.icons(card);
@@ -149,8 +149,8 @@ function paintLibraryFilter() {
     if (!el) return;
     const on = f === libCurrentFilter;
     el.className = on
-      ? "px-3 py-1 rounded-lg bg-spotify-green/20 text-spotify-green font-semibold text-xs transition-all"
-      : "px-3 py-1 rounded-lg bg-s3 text-fg3 hover:text-fg text-xs transition-all";
+      ? "px-3 py-1 rounded-lg bg-spotify-green/20 text-spotify-green font-semibold text-xs transition-colors"
+      : "px-3 py-1 rounded-lg bg-s3 text-fg3 hover:text-fg text-xs transition-colors";
     el.setAttribute("aria-pressed", String(on));
   });
 }
@@ -193,22 +193,22 @@ function changeLibraryLimit(newLimit) {
 // Each optional column knows its header, server-side sort key and how to render its cell.
 const LIB_COLUMNS = [
   { id: "title", label: "Title & filename", sort: "title", required: true, th: "py-3 px-4",
-    cell: (f) => `<td class="py-2.5 px-4"><div class="font-bold text-fg truncate max-w-xs" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</div><div class="text-2xs text-fg4 font-mono truncate max-w-xs" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</div></td>` },
+    cell: (f) => `<td class="py-2.5 px-4"><div class="font-semibold text-fg truncate max-w-xs" title="${escapeHtml(f.title)}">${escapeHtml(f.title)}</div><div class="text-2xs text-fg4 font-mono truncate max-w-xs" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</div></td>` },
   { id: "artist", label: "Artist", sort: "artist", on: true, th: "py-3 px-4",
     cell: (f, h) => `<td class="py-2.5 px-4 text-fg3 truncate max-w-[150px]" title="${escapeHtml(f.artist)}"><button type="button" class="hover:text-fg hover:underline truncate max-w-full text-left" data-on-click="openArtistView_53ee7d" data-args-click="${jsonAttr([h.enc(f.artist)])}">${escapeHtml(f.artist)}</button></td>` },
-  { id: "album", label: "Album", sort: "album", on: true, th: "py-3 px-4",
+  { id: "album", label: "Album", sort: "album", on: true, hide: "md", th: "py-3 px-4",
     cell: (f, h) => `<td class="py-2.5 px-4 text-fg3 truncate max-w-[150px]" title="${escapeHtml(f.album)}"><button type="button" class="hover:text-fg hover:underline truncate max-w-full text-left" data-on-click="openAlbumView_810177" data-args-click="${jsonAttr([h.enc(f.album), h.enc(f.artist)])}">${escapeHtml(f.album)}</button></td>` },
-  { id: "year", label: "Year", sort: "year", th: "py-3 px-3 w-16",
+  { id: "year", label: "Year", sort: "year", hide: "md", th: "py-3 px-3 w-16",
     cell: (f) => `<td class="py-2.5 px-3 font-mono text-xs text-fg3">${escapeHtml(f.year || "—")}</td>` },
-  { id: "genre", label: "Genre", sort: "genre", th: "py-3 px-3",
+  { id: "genre", label: "Genre", sort: "genre", hide: "md", th: "py-3 px-3",
     cell: (f) => `<td class="py-2.5 px-3 text-xs text-fg3 truncate max-w-[110px]" title="${escapeHtml(f.genre || "")}">${escapeHtml(f.genre || "—")}</td>` },
-  { id: "duration", label: "Time", sort: "duration", th: "py-3 px-3 w-16",
+  { id: "duration", label: "Time", sort: "duration", hide: "md", th: "py-3 px-3 w-16",
     cell: (f) => `<td class="py-2.5 px-3 font-mono text-xs text-fg3">${UI.fmtDuration(f.duration_sec)}</td>` },
-  { id: "format", label: "Format", sort: "format", on: true, th: "py-3 px-3 w-20",
-    cell: (f) => `<td class="py-2.5 px-3 font-mono text-spotify-green text-2xs uppercase font-bold">${escapeHtml(f.format)}</td>` },
-  { id: "quality", label: "Quality", sort: "bitrate", on: true, th: "py-3 px-3 w-28",
+  { id: "format", label: "Format", sort: "format", on: true, hide: "sm", th: "py-3 px-3 w-20",
+    cell: (f) => `<td class="py-2.5 px-3 font-mono text-fg3 text-2xs uppercase font-medium">${escapeHtml(f.format)}</td>` },
+  { id: "quality", label: "Quality", sort: "bitrate", on: true, hide: "sm", th: "py-3 px-3 w-28",
     cell: (f) => `<td class="py-2.5 px-3 font-mono text-xs text-fg2"><div>${f.bitrate_kbps ? f.bitrate_kbps + "k" : "--"} <span class="text-2xs text-fg4">${(f.size_bytes / (1024 * 1024)).toFixed(1)} MB</span></div></td>` },
-  { id: "issues", label: "Identified issues", on: true, th: "py-3 px-4",
+  { id: "issues", label: "Identified issues", on: true, hide: "lg", th: "py-3 px-4",
     cell: (f) => {
       const issues = f.issues || [];
       const badges = issues.length
@@ -218,6 +218,10 @@ const LIB_COLUMNS = [
       return `<td class="py-2.5 px-4">${badges}</td>`;
     } }
 ];
+
+// Narrow windows drop the lower-priority columns (see .lib-hide-* in style.css); the Columns menu still lists them.
+function hideClass(c) { return c.hide ? `lib-hide-${c.hide}` : ""; }
+function renderLibraryCell(c, f, h) { return c.cell(f, h).replace(/^<td class="/, `<td class="${hideClass(c)} `); }
 
 function visibleLibraryColumns() {
   const saved = UI.store.get("lib.columns", null);
@@ -233,8 +237,8 @@ function renderLibraryHeader() {
     <th class="py-3 px-3 w-10 text-center"><input aria-label="Select / Deselect all" type="checkbox" id="chk-master-lib" data-on-change="toggleSelectAllLibrary_3fb3ae" class="accent-spotify-green cursor-pointer" title="Select / Deselect all" /></th>
     <th scope="col" class="py-3 px-3 w-10 text-center"><span class="sr-only">Play</span></th>
     ${visibleLibraryColumns().map((c) => c.sort
-      ? `<th scope="col" aria-sort="none" data-lib-sort="${c.sort}" data-on-click="sortLibraryColumn" data-args-click='["${c.sort}"]' class="${c.th} cursor-pointer hover:text-fg select-none">${escapeHtml(c.label)} <span class="sort-ind" aria-hidden="true"></span></th>`
-      : `<th scope="col" class="${c.th}">${escapeHtml(c.label)}</th>`).join("")}
+      ? `<th scope="col" aria-sort="none" data-lib-sort="${c.sort}" data-on-click="sortLibraryColumn" data-args-click='["${c.sort}"]' class="${c.th} ${hideClass(c)} cursor-pointer hover:text-fg select-none">${escapeHtml(c.label)} <span class="sort-ind" aria-hidden="true"></span></th>`
+      : `<th scope="col" class="${c.th} ${hideClass(c)}">${escapeHtml(c.label)}</th>`).join("")}
     <th scope="col" class="py-3 px-3 w-24 text-right"><span class="sr-only">Actions</span></th>`;
   paintLibrarySort();
   updateBatchActionBar();
@@ -262,11 +266,11 @@ function libraryRowHtml(f) {
         <input type="checkbox" aria-label="Select ${escapeHtml(f.title)}" class="lib-row-chk accent-spotify-green cursor-pointer" data-path="${escapeHtml(f.path)}" ${isChecked ? "checked" : ""} data-on-change="toggleLibraryRowSelection_ff200f" />
       </td>
       <td class="py-2.5 px-3 text-center">
-        <button type="button" data-on-click="playLocalTrack_15214c" data-args-click="${playArgs}" aria-label="Play ${escapeHtml(f.title)}" class="p-2 rounded-xl bg-spotify-green hover:bg-spotify-hover text-black shadow-md cursor-pointer">
+        <button type="button" data-on-click="playLocalTrack_15214c" data-args-click="${playArgs}" aria-label="Play ${escapeHtml(f.title)}" class="p-2 rounded-xl bg-s3 hover:bg-s4 text-fg cursor-pointer">
           <i data-lucide="play" aria-hidden="true" class="w-3.5 h-3.5 fill-black"></i>
         </button>
       </td>
-      ${visibleLibraryColumns().map((c) => c.cell(f, helpers)).join("")}
+      ${visibleLibraryColumns().map((c) => renderLibraryCell(c, f, helpers)).join("")}
       <td class="py-2.5 px-3 text-right">
         <div class="flex items-center justify-end space-x-0.5">
           <button type="button" data-on-click="openFileInspector_45a42b" data-args-click="${one}" title="Technical details" aria-label="Technical details: ${escapeHtml(f.title)}" class="p-1.5 rounded-lg hover:bg-s4 text-cyan-400 hover:text-fg transition-colors"><i data-lucide="info" aria-hidden="true" class="w-3.5 h-3.5"></i></button>
@@ -283,7 +287,7 @@ function renderColumnsMenu() {
   if (!menu) return;
   const on = new Set(visibleLibraryColumns().map((c) => c.id));
   menu.innerHTML = `
-    <div class="px-3 py-1.5 text-2xs font-bold uppercase tracking-wider text-fg4">Show columns</div>
+    <div class="px-3 py-1.5 text-2xs font-semibold text-fg4">Show columns</div>
     ${LIB_COLUMNS.map((c) => `
       <label class="flex items-center space-x-2 px-3 py-1.5 text-xs ${c.required ? "text-fg4" : "text-fg2 hover:bg-hv cursor-pointer"}">
         <input type="checkbox" class="accent-spotify-green" ${on.has(c.id) ? "checked" : ""} ${c.required ? "disabled" : ""} data-on-change="toggleLibraryColumn" data-args-change='["${c.id}"]' />

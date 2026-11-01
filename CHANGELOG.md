@@ -1,6 +1,6 @@
 # Changelog
 
-## 2.0.1 (unreleased)
+## 2.1.0 (2026-11-01)
 
 ### UI / UX overhaul
 - **Navigation**: 14 flat sidebar items became 5 destinations (Home, Downloads, Library, Automation, Settings) with a sub-navigation for the sections inside each. URL hash routing keeps your place across reloads; the sidebar collapses (automatically on narrow windows); Alt+1..5, Ctrl+K, `?` for shortcuts.
@@ -19,10 +19,43 @@
 - **Queue**: drag a waiting row to change the download order (the up/down buttons remain as the keyboard path; dragging is off while a filter or sort hides the true order). New `move_job` queue operation.
 - **Library**: column chooser (Year, Genre and Time are now available, sortable server-side) and saved views (filter + search + sort + columns), both remembered on this computer.
 
-- **Visual layer ("Aurora Studio")**, inspired by Magic UI, React Bits, Aceternity, Uiverse and Vanta-style backgrounds, implemented as original vanilla CSS/JS (no React, no CDN, works offline under the strict CSP): drifting aurora background, pointer-following spotlight cards, a travelling border beam and a particle network on the Home add-box, shimmer CTAs, animated gradient headings, blur-fade section entrances, number tickers, an equalizer on the player cover, animated switches, toast countdown bars, skeleton loaders and a floating empty-state icon. The accent colour follows the album art of the playing track.
-- **Visual effects setting** (Settings -> Appearance): Full / Subtle (default) / Off. Windows "reduce motion" always forces Off; animations pause while the window is hidden.
-- **Command palette** (Ctrl+K): jump to any section, run actions (add music, scan, pause queue, theme, effects, sign in...) or search and play a track. `/` focuses the search box.
+- **Command palette** (Ctrl+K): jump to any section, run actions (add music, scan, pause queue, theme, sign in...) or search and play a track. `/` focuses the search box.
 - **First-run wizard** is now a 3-step flow with a progress indicator.
+
+### Added (audit follow-up)
+- **Download history** (Downloads -> History): every finished download, including ones cleared from the queue, searchable by title/artist/album/playlist, filterable by outcome, with Show in folder and Download again (`/api/history`, `/api/history/redownload`).
+- **Backups & restore** (Settings -> Backups & updates): lists the database backups and restores one. The restore is validated, staged, and applied before the database opens on the next start; the database it replaces is saved first as `studio_prerestore_*.db`, so a restore can be undone. A failed restore leaves your data untouched and says why.
+- **Preferences search**: filters sections and individual settings as you type.
+- **Library health** is a compact overview: the score and collection facts share one band and every problem tile is a real button that jumps to where it is fixed. **Cleanup** has a single duplicate workflow (modes plus "Rescan") and links to sound-based matching in Quality.
+- **Library table** sheds lower-priority columns as the window narrows (issues, then album/year/genre/time, then format/quality); title, artist, play and actions always stay.
+- **CI**: `.github/workflows/ci.yml` runs ruff, mypy, the unit/API tests and the browser tests on Windows for every push and pull request.
+- mypy now also checks the bodies of untyped functions (`check_untyped_defs`); the 20 findings were fixed, including optional Spotify clients that were used without a check and a possibly-missing upload filename.
+
+### Added (features)
+- **Fix tags & artwork automatically** (Library -> Health): looks tracks with missing details up on MusicBrainz (title, artist, album, year, track number) and the Cover Art Archive, at one request per second, as a cancellable background job. Nothing is written until you review each suggestion (gaps are pre-ticked, replacements are not) and apply; writing reuses the existing backup-and-rollback tag repair. Only title, artist and length are sent, and only when you press Look up.
+- **Duplicate cleanup in one click** (Library -> Cleanup): a plan that keeps the best copy of each song (lossless, then bitrate, artwork, tags) and moves the others to a backup folder as one batch. Identical files always qualify; similar recordings only when the kept copy is at least as good in every respect; the server re-checks every pair before moving anything. The whole cleanup can be undone, and undo now also puts restored files back into the library index.
+- **Download schedule** (Preferences): only start new downloads between chosen times on chosen days (overnight windows supported). Running downloads finish and queued ones wait; the queue explains why nothing is starting and offers *Download now anyway*.
+- **Notifications, tray icon and minimise-to-tray** (desktop window): a Windows notification when a batch finishes, a tray icon with Open / Pause / Quit, and minimising to the tray. Plain ctypes, no new dependency; the icon exists only while one of the options is on.
+- **Plugins & extensions** (Automation -> Plugins): built-in feature switches plus plugin packs, declarative JSON add-ons that never run code. Six ship with the app (Discord, Slack, ntfy phone push, Home Assistant, generic webhook, copy-to-folder); you can add your own (`docs/plugins.md`). Secret settings are encrypted and masked, the page lists exactly what a pack will do before it is turned on, *Send a test* checks delivery, and the last result is shown. New `on_queue_finished` hook event.
+- **Support bundle** (Settings -> Diagnostics): one zip with the report, sanitised settings, plugin status, recent failures and logs, scrubbed of secrets, web-address tokens and your Windows user name; plus *Copy summary* for a bug report.
+- **Release pipeline**: pushing a version tag builds, tests (including running the built exe), signs when a certificate is configured, and publishes a GitHub Release with `updates.json`, the feed the app's update check reads. `tools/smoke_packaged.py` runs a built (or source) copy of the app and checks it over HTTP. `main.py web --headless --url-file` writes the startup address (inside the data folder only) so such checks can authenticate.
+- HTTP logging now shows only the host of an address, since webhook addresses are credentials.
+
+### Visual cleanup ("unslop")
+A design pass over the whole interface to remove the usual signs of generated UI, following the [unslop](https://github.com/heydamir/unslop) method by Damir Sokolovsky (CC BY 4.0). The features and the order of sections are unchanged.
+- **Removed the decorative effects layer**: drifting aurora background, pointer spotlight on cards, travelling border beam, shimmering buttons, gradient headings, particle network, floating icon, player glow and the equalizer overlay (`fx.js`, `fx.css`, and the Visual effects setting that controlled them).
+- **Colour**: no gradients on surfaces (artist, album and playlist headers are plain raised surfaces), no coloured icons or rainbow stat numbers; the green accent is kept for primary actions and meaning.
+- **Type**: weights 400-600 only (no 700-900), sentence case instead of tracked capitals, tabular figures for counts and sizes; unused font files removed.
+- **Icons and copy**: no sparkle or flame icons, no emoji in staging labels, no greeting headline or exclamation marks.
+- **Motion**: `transition-all`, pulsing placeholders and hover scaling removed; one easing curve, one short fade when a section opens.
+- **Details**: one radius family for cards, fewer shadows (depth from surface steps), a quiet play button on library rows.
+- A browser test now guards this: no ambient layers, gradients, looping motion, heavy weights or shouting capitals on the main screens.
+
+### Fixed (features)
+- The schedule's day boxes could revert the box you just clicked; the boxes are now the source of truth while you click.
+
+### Removed / tidied
+- The unused Python 3.10 rollback environment (`.venv310`, 271 MB) and the vendored Inno Setup example scripts. The pre-redesign UI copy is kept as a single gitignored zip (`ui_backup_original.zip`) instead of a folder of 3 MB of loose files.
 
 ### Fixed (UI)
 - Finishing the first-run wizard threw `engine is not defined` and showed an error.
@@ -76,7 +109,7 @@
 - Foreign keys enforced for `watcher_events` and `release_calendar` (cascade deletes, migration 11 removes orphans).
 - Metadata fallback no longer downloads a whole track just to read its tags; search results now carry the canonical capability data.
 - Opt-in update checker with verified download and signature-gated installer launch.
-- The project now runs on Python 3.14 (full suite of 399 tests passes on 3.14 and 3.10); the old 3.10 venv is kept as .venv310 for rollback.
+- The project now runs on Python 3.14 (full suite of 399 tests passes on 3.14 and 3.10); the old 3.10 venv was removed (recreate it from requirements.txt if you ever need to roll back).
 
 ### Final pass
 - Downloads are streamed to disk chunk-by-chunk (byte-for-byte identical to librespot's own `read()`, verified in tests) instead of being assembled in memory; transcoding reads that file and writes atomically.
