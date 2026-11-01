@@ -113,7 +113,7 @@ def handle_bad_request(e):
 
 @app.errorhandler(404)
 def handle_not_found(e):
-    logger.warning("Not Found (404): %s", e)
+    logger.warning("Not Found (404): %s %s", request.method, request.path)
     return jsonify({"success": False, "error": "Requested resource was not found", "status_code": 404}), 404
 
 
@@ -135,6 +135,25 @@ def start_background_services():
     MaintenanceService.start()
 
 
+# The UI keeps one long-lived SSE connection (live log) open per window plus short polling requests,
+# so the pool must be comfortably larger than the number of streams. Everything is bound to loopback.
+SERVER_THREADS = 24
+
+
+def create_wsgi_server(host: str = "127.0.0.1", port: int = 0):
+    """Production WSGI server (waitress) instead of Flask's development server."""
+    from waitress import create_server
+    return create_server(
+        app, host=host, port=port, threads=SERVER_THREADS, ident="StudioServer",
+        channel_timeout=600, cleanup_interval=30, expose_tracebacks=False, clear_untrusted_proxy_headers=True,
+    )
+
+
+def serve_app(host: str = "127.0.0.1", port: int = 0):
+    """Blocking call: serve the app until the process ends."""
+    create_wsgi_server(host, port).run()
+
+
 def start_server(host="127.0.0.1", port=5000, debug=False):
     logger.info(f"Starting Spotify Downloader Studio on http://{host}:{port}")
     # Auto-index downloads on startup
@@ -143,7 +162,10 @@ def start_server(host="127.0.0.1", port=5000, debug=False):
     except Exception:
         pass
     start_background_services()
-    app.run(host=host, port=port, debug=debug, threaded=True)
+    if debug:
+        app.run(host=host, port=port, debug=True, threaded=True)   # development only
+    else:
+        serve_app(host, port)
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from src import http_client
 from src.config_loader import get_downloads_path, get_temp_path, PROJECT_ROOT
 from src.settings_service import SettingsService
 from src.db import get_db_connection
+from src.download_schedule import DownloadSchedule
 from src.file_organizer import FileOrganizer
 from src.lyrics_service import LyricsService
 from src.match_engine import MatchCandidate, MatchEngine
@@ -21,6 +22,7 @@ from src.metadata_service import MetadataService
 from src.plugin_engine import DownloadArchive, PluginEngine
 from src.spotify_direct import SpotifyDirectClient
 from src.tag_writer import TagWriter
+from src.tray_service import TrayService
 
 logger = logging.getLogger("QueueManager")
 
@@ -137,6 +139,7 @@ class QueueManager:
         self.max_workers = 1
         self.is_paused = False
         self.is_running = True
+        self._batch_ids: set = set()          # jobs seen waiting or running since the queue was last idle
 
         self.direct_client = SpotifyDirectClient()
         self.metadata_service = MetadataService()
@@ -448,6 +451,7 @@ class QueueManager:
         with self._lock:
             return {
                 "is_paused": self.is_paused,
+                "schedule": DownloadSchedule.describe(),
                 "max_workers": self.max_workers,
                 "counts": {
                     "total": len(self.jobs),
@@ -516,6 +520,24 @@ class QueueManager:
             drop = {id(j) for j in sorted(finished, key=lambda j: j.completed_at or j.added_at)[:excess]}
             self.jobs = [j for j in self.jobs if id(j) not in drop]
 
+    BUSY_STATUSES = ("QUEUED", "ACTIVE", "DOWNLOADING", "CONVERTING", "TAGGING")
+
+    def _track_batch(self):
+        """Notice when a stretch of downloading ends and tell hooks and (in the desktop app) the person."""
+        with self._lock:
+            busy = [j for j in self.jobs if j.status in self.BUSY_STATUSES]
+            self._batch_ids.update(j.id for j in busy)
+            if busy or not self._batch_ids:
+                return
+            ids, self._batch_ids = self._batch_ids, set()
+            outcome = [j.status for j in self.jobs if j.id in ids]
+        counts = {name.lower(): outcome.count(name) for name in ("COMPLETED", "FAILED", "SKIPPED", "CANCELLED")}
+        if counts["completed"] + counts["failed"] == 0:
+            return
+        counts["total"] = len(outcome)
+        PluginEngine.dispatch("on_queue_finished", counts)
+        TrayService.notify_batch_finished(counts)
+
     def _dispatcher_loop(self):
         ticks = 0
         while self.is_running:
@@ -524,7 +546,8 @@ class QueueManager:
             if ticks % 150 == 0:  # roughly once a minute
                 with self._lock:
                     self._trim_finished()
-            if self.is_paused:
+            self._track_batch()
+            if self.is_paused or not DownloadSchedule.allowed_now():
                 continue
 
             with self._lock:

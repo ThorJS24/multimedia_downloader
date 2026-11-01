@@ -46,7 +46,7 @@ IGNORED_EXTENSIONS = {
 class _WatchdogEventHandler(FileSystemEventHandler):
     """Event handler bridging watchdog filesystem notifications into FolderWatcherService."""
 
-    def __init__(self, service: "FolderWatcherService", folder_id: str):
+    def __init__(self, service: Any, folder_id: str):   # the service is used as a class-level singleton
         super().__init__()
         self.service = service
         self.folder_id = folder_id
@@ -141,7 +141,7 @@ class FolderWatcherService:
                         cls._observer.stop()
                         cls._observer.join(timeout=1.0)
                     except Exception:
-                        logger.debug("Suppressed exception", exc_info=True)
+                        logger.debug("Stopping the file-system observer failed", exc_info=True)
                     cls._observer = None
 
                 cfg = SettingsService.get_all().get("watcher", {})
@@ -282,14 +282,14 @@ class FolderWatcherService:
                 try:
                     system_roots.append(Path(val).resolve())
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    logger.warning("Could not resolve a system folder (%s) for the watch-folder safety check", val, exc_info=True)
         for fallback in (r"C:\Windows", r"C:\Program Files", r"C:\Program Files (x86)"):
             try:
                 p_fb = Path(fallback).resolve()
                 if p_fb.exists() and p_fb not in system_roots:
                     system_roots.append(p_fb)
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.warning("Could not resolve fallback system folder %s for the watch-folder safety check", fallback, exc_info=True)
 
         for sroot in system_roots:
             is_sys = False
@@ -297,7 +297,7 @@ class FolderWatcherService:
                 if target_path == sroot or target_path.is_relative_to(sroot):
                     is_sys = True
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.warning("Safety check against system folder %s failed for %s", sroot, target_path, exc_info=True)
             if is_sys:
                 raise ValueError(f"Monitoring system directory '{target_path}' is strictly prohibited.")
 
@@ -318,7 +318,7 @@ class FolderWatcherService:
                     if resolved == sroot or resolved.is_relative_to(sroot):
                         is_sym_sys = True
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    logger.warning("Symlink safety check against system folder %s failed for %s", sroot, resolved, exc_info=True)
                 if is_sym_sys:
                     raise ValueError("Symlink target resolves to a prohibited system directory.")
 
@@ -378,7 +378,7 @@ class FolderWatcherService:
             if p_cand.exists():
                 norm_path = str(p_cand.resolve())
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Could not normalise folder %s; using it as typed", folder_id_or_path, exc_info=True)
 
         conn = get_db_connection()
         with conn:
@@ -415,7 +415,7 @@ class FolderWatcherService:
             if p_cand.exists():
                 norm_path = str(p_cand.resolve())
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Could not normalise folder %s; using it as typed", folder_id_or_path, exc_info=True)
 
         conn = get_db_connection()
         with conn:
@@ -698,7 +698,7 @@ class FolderWatcherService:
             if p_cand.exists():
                 norm_path = str(p_cand.resolve())
         except Exception:
-            logger.debug("Suppressed exception", exc_info=True)
+            logger.debug("Could not normalise folder %s; using it as typed", folder_id_or_path, exc_info=True)
 
         conn = get_db_connection()
         cur = conn.execute(

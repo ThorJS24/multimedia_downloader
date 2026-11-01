@@ -7,7 +7,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import mutagen
 
@@ -525,7 +525,7 @@ class LibraryIndexer:
         filter_type: str = "all",
         sort_by: str = "last_scanned",
         sort_dir: str = "desc",
-        limit: int = 50,
+        limit: Optional[int] = 50,
         offset: int = 0
     ) -> Dict[str, Any]:
         """
@@ -575,10 +575,10 @@ class LibraryIndexer:
         count_cur = conn.execute(f"SELECT COUNT(*) as total FROM library_files {where_sql}", tuple(params))
         total = count_cur.fetchone()["total"]
 
-        # Page query
+        # Page query (limit=None means "everything": exports must never silently truncate a big library)
         page_cur = conn.execute(
             f"SELECT * FROM library_files {where_sql} ORDER BY {col} {direction} LIMIT ? OFFSET ?",
-            tuple(params + [limit, offset])
+            tuple(params + [-1 if limit is None else limit, offset])
         )
         rows = [dict(r) for r in page_cur.fetchall()]
         for r in rows:

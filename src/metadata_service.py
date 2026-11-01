@@ -38,7 +38,7 @@ class MetadataService:
                     logger.info(f"Loaded {kind} {item_id} from SQLite cache")
                     return json.loads(row["snapshot_json"])
                 except Exception:
-                    logger.debug("Suppressed exception", exc_info=True)
+                    logger.warning("Cached %s %s could not be read; fetching it again", kind, item_id, exc_info=True)
 
         result = {}
         if kind == "track":
@@ -354,7 +354,7 @@ class MetadataService:
         # 1. Try Web API first if available
         if self.web_api.has_web_api():
             try:
-                t = self.web_api.sp.track(track_id)
+                t = self.web_api.client().track(track_id)
                 artists = [a["name"] for a in t.get("artists", [])]
                 album = t.get("album", {})
                 images = album.get("images", [])
@@ -419,7 +419,7 @@ class MetadataService:
                     t["collection_id"] = playlist_id
                     t["collection_name"] = name
                     t["playlist_name"] = name
-                pl = self.web_api.sp.playlist(playlist_id, fields="name,description,owner,images")
+                pl = self.web_api.client().playlist(playlist_id, fields="name,description,owner,images")
                 images = pl.get("images", [])
                 cover_url = images[0]["url"] if images else None
 
@@ -473,7 +473,7 @@ class MetadataService:
         # 1. Try Web API first if available
         if self.web_api.has_web_api():
             try:
-                alb = self.web_api.sp.album(album_id)
+                alb = self.web_api.client().album(album_id)
                 images = alb.get("images", [])
                 cover_url = images[0]["url"] if images else None
                 album_name = alb.get("name", "")
@@ -500,7 +500,7 @@ class MetadataService:
                             "cover_url": cover_url
                         })
                     if results.get("next"):
-                        results = self.web_api.sp.next(results)
+                        results = self.web_api.client().next(results)
                     else:
                         break
 
@@ -532,12 +532,12 @@ class MetadataService:
 
     def _resolve_artist(self, artist_id: str) -> dict:
         if self.web_api.has_web_api():
-            artist_obj = self.web_api.sp.artist(artist_id)
+            artist_obj = self.web_api.client().artist(artist_id)
             images = artist_obj.get("images", [])
             image_url = images[0]["url"] if images else None
 
             # Fetch top tracks
-            top = self.web_api.sp.artist_top_tracks(artist_id)
+            top = self.web_api.client().artist_top_tracks(artist_id)
             top_tracks = []
             for t in top.get("tracks", []):
                 top_tracks.append({
@@ -551,7 +551,7 @@ class MetadataService:
                 })
 
             # Fetch albums
-            albums_res = self.web_api.sp.artist_albums(artist_id, album_type="album,single", limit=20)
+            albums_res = self.web_api.client().artist_albums(artist_id, album_type="album,single", limit=20)
             albums = []
             for a in albums_res.get("items", []):
                 albums.append({

@@ -7,7 +7,7 @@ masked in anything that leaves the process.
 """
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from src.config_loader import get_config, save_config
 
@@ -30,6 +30,24 @@ class Field:
 
 def _bitrate_ok(v: str) -> bool:
     return v.endswith("k") and v[:-1].isdigit() and 32 <= int(v[:-1]) <= 512
+
+
+DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")     # datetime.weekday(): Monday == 0
+
+
+def parse_hhmm(value: str) -> Optional[int]:
+    """'07:30' -> minutes since midnight, or None when it is not a valid 24-hour time."""
+    try:
+        hours, minutes = value.strip().split(":")
+        h, m = int(hours), int(minutes)
+    except (AttributeError, ValueError):
+        return None
+    return h * 60 + m if 0 <= h <= 23 and 0 <= m <= 59 and len(minutes) == 2 else None
+
+
+def days_valid(value: str) -> bool:
+    parts = [p.strip() for p in value.split(",") if p.strip()]
+    return bool(parts) and all(p in DAYS for p in parts)
 
 
 SCHEMA: Dict[str, Dict[str, Field]] = {
@@ -69,6 +87,17 @@ SCHEMA: Dict[str, Dict[str, Field]] = {
         "settling_delay_sec": Field(2.0, float, min=0.1, max=600),
         "recursive": Field(True, bool),
         "use_polling_fallback": Field(False, bool),
+    },
+    "schedule": {
+        # Only start new downloads inside this window; running and queued jobs are never lost.
+        "enabled": Field(False, bool),
+        "start": Field("01:00", str, check=lambda v: parse_hhmm(v) is not None),
+        "end": Field("07:00", str, check=lambda v: parse_hhmm(v) is not None),
+        "days": Field(",".join(DAYS), str, check=days_valid),
+    },
+    "notifications": {
+        "enabled": Field(True, bool),            # desktop notification when a batch of downloads finishes
+        "minimize_to_tray": Field(False, bool),  # minimising hides the window; the tray icon brings it back
     },
     "maintenance": {
         "monitor_enabled": Field(True, bool),
@@ -157,6 +186,15 @@ def _decrypt(value: str) -> str:
     return SecurityManager.decrypt_secret(value[len(SECRET_PREFIX):])
 
 
+def protect(value: str) -> str:
+    """Encrypt a secret for storage on this computer (used by plugin packs for webhook addresses and the like)."""
+    return _encrypt(value)
+
+
+def unprotect(value: str) -> str:
+    return _decrypt(value)
+
+
 def _migrate(raw: dict) -> bool:
     """Bring an on-disk config up to the current shape. Returns True if `raw` changed."""
     changed = False
@@ -191,6 +229,21 @@ def _migrate(raw: dict) -> bool:
 
 
 class SettingsService:
+    _listeners: List[Callable[[], None]] = []
+
+    @classmethod
+    def on_change(cls, callback: Callable[[], None]) -> None:
+        """Run `callback` after settings are saved (used by services that cache or act on them)."""
+        cls._listeners.append(callback)
+
+    @classmethod
+    def _changed(cls) -> None:
+        for callback in cls._listeners:
+            try:
+                callback()
+            except Exception:
+                logger.warning("A settings-change listener failed", exc_info=True)
+
     @classmethod
     def _load(cls) -> dict:
         raw = get_config()
@@ -273,6 +326,7 @@ class SettingsService:
                 raw[section] = {}
             raw[section].update(values)
         save_config(raw)
+        cls._changed()
         return cls.get_all()
 
     @classmethod
@@ -287,6 +341,7 @@ class SettingsService:
             if section not in SCHEMA:
                 fresh[section] = value
         save_config(fresh)
+        cls._changed()
         return cls.get_all()
 
     @classmethod

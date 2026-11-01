@@ -6,7 +6,16 @@ from pathlib import Path
 from typing import List, Optional, Tuple
 
 
-from librespot.audio import AudioQualityPicker, PlayableContentFeeder
+# librespot's generated protobuf code only loads on protobuf >= 4 with the pure-Python implementation
+# (verified: all 173 message types round-trip identically on 3.20.1, 5.29 and 6.33). A no-op on the pinned 3.20.x.
+try:
+    from importlib.metadata import version as _pkg_version
+    if int(_pkg_version("protobuf").split(".")[0]) >= 4:
+        os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+except Exception:
+    pass
+
+from librespot.audio import AudioQualityPicker, PlayableContentFeeder  # noqa: E402
 from librespot.core import PlaylistId, Session, TrackId
 from librespot.proto import Metadata_pb2
 from src.config_loader import get_config, get_credentials_path, PROJECT_ROOT

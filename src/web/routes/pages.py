@@ -344,7 +344,7 @@ def export_m3u():
         ]
         m3u_path = get_downloads_path() / f"{playlist_name}.m3u"
     else:
-        lib_data = LibraryIndexer.get_library(limit=10000)
+        lib_data = LibraryIndexer.get_library(limit=None)
         files = lib_data.get("files", [])
         m3u_path = get_downloads_path() / "library.m3u"
 
@@ -419,7 +419,7 @@ def batch_reindex():
 
 @bp.route("/api/library/export-csv", methods=["POST"])
 def export_csv():
-    lib_data = LibraryIndexer.get_library(limit=10000)
+    lib_data = LibraryIndexer.get_library(limit=None)
     csv_path = get_downloads_path() / "library.csv"
     LibraryIndexer.export_csv(csv_path, lib_data.get("files", []))
     return jsonify({"success": True, "path": str(csv_path)})

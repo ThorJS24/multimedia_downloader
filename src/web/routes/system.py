@@ -1,4 +1,5 @@
 import os
+import queue
 import shutil
 import subprocess
 import threading
@@ -8,13 +9,13 @@ from pathlib import Path
 
 from flask import Response, jsonify, request, Blueprint
 
-from src.backup_service import BackupService
+from src.backup_service import BACKUPS_DIR, BackupService
 from src.config_loader import get_config, save_config, get_credentials_path, get_downloads_path, PROJECT_ROOT
 from src.db import record_audit
 from src.repositories import JobRepository, LibraryRepository
 from src.media_processor import get_ffmpeg_bin
 from src.settings_service import SCHEMA, SECRET_MASK, SettingsService
-from src.version import __version__
+from src.version import __version__, RELEASE_FEED_URL
 from src.spotify_direct import SpotifyDirectClient
 from src.web.log_stream import format_sse, log_handler
 from src.web.state import logger
@@ -193,7 +194,7 @@ def handle_settings():
         except ValueError as e:
             return jsonify({"success": False, "error": str(e)}), 400
         return jsonify({"success": True, "settings": updated})
-    return jsonify({"settings": SettingsService.get_all(), "version": __version__})
+    return jsonify({"settings": SettingsService.get_all(), "version": __version__, "release_feed_url": RELEASE_FEED_URL})
 
 
 @bp.route("/api/settings/export", methods=["GET"])
@@ -230,15 +231,27 @@ def sse_logs():
     def event_stream():
         q = log_handler.subscribe()
         try:
+            # An immediate comment makes the server send the response headers right away (WSGI servers
+            # defer them until the first chunk) so the browser's EventSource opens at once.
+            yield ": connected\n\n"
             for item in log_handler.get_history():
                 yield format_sse(item)
             while True:
-                record = q.get()
+                try:
+                    record = q.get(timeout=15)
+                except queue.Empty:
+                    yield ": keepalive\n\n"      # also lets the server notice a window that went away
+                    continue
                 yield format_sse(record)
         except GeneratorExit:
+            pass
+        finally:
             log_handler.unsubscribe(q)
 
-    return Response(event_stream(), mimetype="text/event-stream")
+    resp = Response(event_stream(), mimetype="text/event-stream")
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 
 
 # ================= SYSTEM READINESS & BACKUPS =================
@@ -271,7 +284,7 @@ def check_readiness():
         test_file.unlink()
         writable = True
     except Exception:
-        logger.debug("Suppressed exception", exc_info=True)
+        logger.warning("Write test in the temp folder failed (%s)", test_file, exc_info=True)
 
     cfg = SettingsService.get_all()
     first_run_completed = cfg.get("general", {}).get("first_run_completed", False)
@@ -371,7 +384,40 @@ def create_backup():
 
 @bp.route("/api/backups/list", methods=["GET"])
 def list_backups():
-    return jsonify({"backups": BackupService.list_backups()})
+    return jsonify({
+        "backups": BackupService.list_backups(),
+        "pending": BackupService.pending_restore(),
+        "last_restore": BackupService.last_restore(),
+        "folder": str(BACKUPS_DIR),
+    })
+
+
+@bp.route("/api/backups/restore", methods=["POST"])
+def restore_backup():
+    """Stage a restore; it is applied (and the current database saved first) the next time the app starts."""
+    filename = ((request.json or {}).get("filename") or "").strip()
+    if not filename:
+        return jsonify({"success": False, "error": "Choose a backup to restore"}), 400
+    try:
+        info = BackupService.stage_restore(filename)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    except Exception as e:
+        logger.error("Staging a restore failed", exc_info=True)
+        return jsonify({"success": False, "error": f"Could not stage the restore: {e}"}), 500
+    record_audit("BACKUP", f"Restore of {info['source']} staged for the next start")
+    return jsonify({"success": True, "pending": info})
+
+
+@bp.route("/api/backups/restore/cancel", methods=["POST"])
+def cancel_restore():
+    return jsonify({"success": True, "cancelled": BackupService.cancel_restore()})
+
+
+@bp.route("/api/backups/restore/dismiss", methods=["POST"])
+def dismiss_restore_result():
+    BackupService.dismiss_last_restore()
+    return jsonify({"success": True})
 
 
 @bp.route("/api/db/integrity", methods=["GET"])

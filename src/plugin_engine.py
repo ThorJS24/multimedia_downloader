@@ -6,8 +6,11 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from urllib.parse import urlparse
-from src import http_client
 
+import requests
+
+from src import http_client
+from src.config_loader import DATA_DIR, PROJECT_ROOT
 from src.db import get_db_connection, record_audit
 
 logger = logging.getLogger("PluginEngine")
@@ -20,6 +23,7 @@ class PluginEngine:
     """
 
     ALLOWED_ACTIONS = ("webhook", "copy_to_folder")
+    EVENTS = ("on_download_complete", "on_download_failed", "on_queue_finished")
 
     @classmethod
     def register_hook(cls, hook_id: str, name: str, event_type: str, action_type: str, target: str, config: Optional[dict] = None) -> bool:
@@ -64,33 +68,70 @@ class PluginEngine:
             target=cls.trigger_event, args=(event_type, dict(payload)), daemon=True, name=f"Hook-{event_type}"
         ).start()
 
+    @staticmethod
+    def inside_app(path: Path) -> bool:
+        """Hooks and plugins may only write inside the application's own folders."""
+        resolved = path.resolve()
+        return any(resolved == r or resolved.is_relative_to(r) for r in (PROJECT_ROOT.resolve(), Path(DATA_DIR).resolve()))
+
+    @classmethod
+    def deliver(cls, action_type: str, target: str, payload: Dict[str, Any], *, body: Any = None,
+                as_text: bool = False, headers: Optional[Dict[str, str]] = None) -> str:
+        """Perform one hook action and say what happened. Raises with a message that never contains the web address
+        (webhook addresses are credentials), only its host."""
+        if action_type == "webhook":
+            parsed = urlparse(target)
+            if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                raise ValueError("The web address is not valid")
+            send_headers = dict(headers or {})
+            kwargs: Dict[str, Any] = {"timeout": 5.0, "retries": 2}
+            if body is None:
+                kwargs["json"] = payload
+            elif as_text:
+                kwargs["data"] = str(body).encode("utf-8")
+                send_headers.setdefault("Content-Type", "text/plain; charset=utf-8")
+            else:
+                kwargs["json"] = body
+            try:
+                resp = http_client.post(target, headers=send_headers or None, **kwargs)
+            except requests.Timeout:
+                raise RuntimeError(f"{parsed.netloc} did not answer in time") from None
+            except requests.RequestException as e:
+                raise RuntimeError(f"Could not reach {parsed.netloc} ({type(e).__name__})") from None
+            if resp.status_code >= 400:
+                raise RuntimeError(f"{parsed.netloc} answered HTTP {resp.status_code}")
+            return f"Delivered (HTTP {resp.status_code})"
+        if action_type == "copy_to_folder":
+            dest_dir = Path(target)
+            src_file = Path(payload.get("output_path", ""))
+            if not src_file.is_file():
+                raise FileNotFoundError("The finished file was not found")
+            if not dest_dir.is_dir():
+                raise FileNotFoundError("The destination folder does not exist")
+            shutil.copy2(src_file, dest_dir / src_file.name)
+            return f"Copied {src_file.name}"
+        raise ValueError(f"Unsupported hook action '{action_type}'")
+
     @classmethod
     def trigger_event(cls, event_type: str, payload: Dict[str, Any]):
         """
-        Executes all active hooks listening for event_type.
+        Executes every active hook listening for event_type, then the switched-on plugin packs.
         """
         conn = get_db_connection()
         rows = conn.execute("SELECT * FROM plugin_hooks WHERE event_type = ? AND is_enabled = 1", (event_type,)).fetchall()
 
         for r in rows:
-            action_type = r["action_type"]
-            target = r["target"]
-            name = r["name"]
-
             try:
-                if action_type == "webhook":
-                    http_client.post(target, json=payload, timeout=5.0, retries=2)
-                    logger.info(f"Triggered webhook '{name}' to {target}")
-
-                elif action_type == "copy_to_folder":
-                    dest_dir = Path(target)
-                    src_file = Path(payload.get("output_path", ""))
-                    if src_file.exists() and dest_dir.exists():
-                        shutil.copy2(src_file, dest_dir / src_file.name)
-                        logger.info(f"Hook '{name}' copied {src_file.name} to {dest_dir}")
-
+                detail = cls.deliver(r["action_type"], r["target"], payload)
+                logger.info("Hook '%s' ran: %s", r["name"], detail)
             except Exception as e:
-                logger.error(f"Error executing hook '{name}': {e}")
+                logger.warning("Hook '%s' failed: %s", r["name"], e)
+
+        from src.plugin_packs import PluginPacks     # imported here: plugin_packs builds on this module
+        try:
+            PluginPacks.fire(event_type, payload)
+        except Exception:
+            logger.error("Running plugin packs failed", exc_info=True)
 
 
 class DownloadArchive:

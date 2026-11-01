@@ -2,14 +2,18 @@ from src.version import __version__
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import time
+import zipfile
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, List
+from urllib.parse import urlparse
 
 from src.backup_service import BackupService
 from src.config_loader import (
+    DATA_DIR,
     PROJECT_ROOT,
     TEMP_DIR,
     get_config,
@@ -18,7 +22,32 @@ from src.config_loader import (
 )
 from src.db import get_db_connection, get_migration_version
 from src.library_intelligence import LibraryIntelligence
+from src.logging_setup import LOG_FILE
 from src.media_processor import get_ffmpeg_bin, get_ffprobe_bin
+from src.security import SecurityManager
+
+DIAGNOSTICS_DIR: Path = DATA_DIR / "diagnostics"
+KEEP_BUNDLES = 10
+# Addresses on these sites are useful when debugging and carry no credentials; any other address loses its path
+# (webhook URLs, update feeds and the like can contain tokens).
+KNOWN_HOSTS = ("spotify.com", "scdn.co", "youtube.com", "youtu.be", "googlevideo.com", "musicbrainz.org", "coverartarchive.org",
+               "lrclib.net", "github.com", "githubusercontent.com")
+URL_RE = re.compile(r"""https?://[^\s'"<>)\]]+""")
+# C:\Users\<name>\...  The name may contain spaces, and inside JSON the separators are doubled.
+USER_PATH_RE = re.compile(r"""(?i)([A-Z]:(?:\\{1,2}|/)Users(?:\\{1,2}|/))[^\\/"'\r\n]+""")
+
+
+def scrub_text(text: str) -> str:
+    """Remove what must not leave this computer: secrets, tokens inside addresses, the Windows user name."""
+    def one_url(match: "re.Match[str]") -> str:
+        parsed = urlparse(match.group(0))
+        host = parsed.hostname or ""
+        if any(host == h or host.endswith("." + h) for h in KNOWN_HOSTS):
+            return match.group(0)
+        return f"{parsed.scheme}://{parsed.netloc}" + ("/…" if parsed.path not in ("", "/") or parsed.query else "")
+    text = SecurityManager.redact_secrets(text)
+    text = URL_RE.sub(one_url, text)
+    return USER_PATH_RE.sub(lambda m: m.group(1) + "<user>", text)
 
 
 class DiagnosticsService:
@@ -144,6 +173,48 @@ class DiagnosticsService:
             "folder_watcher": watcher_info,
             "configuration": safe_cfg
         }
+
+    @classmethod
+    def create_support_bundle(cls) -> Path:
+        """A zip you can attach to a bug report: report, settings, plugin status, recent failures and the logs, all
+        scrubbed. It is written to <data folder>/diagnostics and nothing is sent anywhere."""
+        from src.plugin_packs import PluginPacks
+        from src.settings_service import SettingsService
+
+        DIAGNOSTICS_DIR.mkdir(parents=True, exist_ok=True)
+        now = time.time()
+        stamp = f"{time.strftime('%Y%m%d-%H%M%S', time.localtime(now))}-{int((now % 1) * 1000):03d}"     # sorts oldest to newest by name
+        target = DIAGNOSTICS_DIR / f"studio-diagnostics-{stamp}.zip"
+        counter = 1
+        while target.exists():
+            target = DIAGNOSTICS_DIR / f"studio-diagnostics-{stamp}-{counter}.zip"
+            counter += 1
+
+        failures = [dict(r) for r in get_db_connection().execute(
+            "SELECT title, artists, album, error, provider, added_at, completed_at FROM jobs WHERE status = 'FAILED' "
+            "ORDER BY COALESCE(completed_at, added_at) DESC LIMIT 50").fetchall()]
+        plugins = [{k: p[k] for k in ("id", "name", "version", "source", "enabled", "permissions", "last_status")} for p in PluginPacks.list_packs()]
+        files: Dict[str, str] = {
+            "README.txt": ("Spotify Downloader Studio diagnostics bundle\n\nMade on this computer when you asked for it; nothing was sent anywhere.\n"
+                           "Secrets, webhook addresses and your Windows user name are removed. Read the files before you share the bundle.\n"),
+            "report.json": json.dumps(cls.generate_report(), indent=2, default=str),
+            "report.md": cls.generate_markdown_report(),
+            "settings.json": json.dumps(SettingsService.export_sanitized(), indent=2, default=str),
+            "plugins.json": json.dumps(plugins, indent=2, default=str),
+            "recent_failures.json": json.dumps(failures, indent=2, default=str),
+        }
+        logs: List[Path] = sorted(LOG_FILE.parent.glob(LOG_FILE.name + "*"))
+        with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as bundle:
+            for name, content in files.items():
+                bundle.writestr(name, scrub_text(content))
+            for log in logs:
+                try:
+                    bundle.writestr(f"logs/{log.name}", scrub_text(log.read_text(encoding="utf-8", errors="replace")))
+                except OSError:
+                    bundle.writestr(f"logs/{log.name}.unreadable.txt", "This log file could not be read.")
+        for old in sorted(DIAGNOSTICS_DIR.glob("studio-diagnostics-*.zip"), key=lambda p: p.name, reverse=True)[KEEP_BUNDLES:]:
+            old.unlink(missing_ok=True)
+        return target
 
     @classmethod
     def generate_markdown_report(cls) -> str:

@@ -118,6 +118,16 @@ def apply_metadata_diff():
         return jsonify({"success": False, "error": str(e)}), 400
 
 
+@bp.route("/api/diagnostics/bundle", methods=["POST"])
+def create_support_bundle():
+    """Write a scrubbed zip (report, settings, plugin status, recent failures, logs) for attaching to a bug report."""
+    try:
+        path = DiagnosticsService.create_support_bundle()
+    except OSError as e:
+        return jsonify({"success": False, "error": f"Could not write the bundle: {e}"}), 500
+    return jsonify({"success": True, "path": str(path), "size": path.stat().st_size})
+
+
 @bp.route("/api/diagnostics/export", methods=["GET"])
 @bp.route("/api/system/diagnostics/export", methods=["GET"])
 def export_diagnostics():

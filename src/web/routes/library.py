@@ -1,3 +1,4 @@
+from typing import Any
 from pathlib import Path
 
 from flask import Response, jsonify, request, Blueprint
@@ -6,6 +7,7 @@ from src.config_loader import get_downloads_path, PROJECT_ROOT
 from src.repositories import LibraryRepository
 from src.library_indexer import LibraryIndexer
 from src.library_intelligence import LibraryIntelligence
+from src.metadata_enricher import MetadataEnricher
 from src.web.state import _is_user_media_path, logger
 
 bp = Blueprint("library", __name__)
@@ -111,10 +113,10 @@ def get_library_cover():
                 tags = ID3(p)
                 for v in tags.values():
                     if isinstance(v, APIC):
-                        mime = v.mime or "image/jpeg"
-                        return Response(v.data, mimetype=mime)
+                        apic: Any = v
+                        return Response(apic.data, mimetype=apic.mime or "image/jpeg")
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("No ID3 cover art in this file; trying other formats", exc_info=True)
         elif ext in (".flac", ".ogg"):
             from mutagen.flac import FLAC
             try:
@@ -124,18 +126,18 @@ def get_library_cover():
                     mime = pic.mime or "image/jpeg"
                     return Response(pic.data, mimetype=mime)
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("No embedded picture in this file; trying other formats", exc_info=True)
         elif ext in (".m4a", ".mp4", ".aac"):
             from mutagen.mp4 import MP4
             try:
-                audio = MP4(p)
-                covs = audio.tags.get("covr", []) if audio.tags else []
+                mp4 = MP4(p)
+                covs: list = mp4.tags.get("covr", []) if mp4.tags else []
                 if covs:
                     data = covs[0]
                     mime = "image/png" if bytes(data).startswith(b"\x89PNG") else "image/jpeg"
                     return Response(bytes(data), mimetype=mime)
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("No MP4 cover art in this file", exc_info=True)
 
         return jsonify({"error": "No embedded cover found"}), 404
     except Exception as e:
@@ -170,7 +172,7 @@ def get_library_lyrics():
                     if isinstance(v, USLT) or k.startswith("USLT"):
                         return jsonify({"lyrics": str(v.text), "has_lyrics": True, "source": "id3_embedded"})
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("Reading embedded lyrics failed (ID3)", exc_info=True)
         elif ext in (".flac", ".ogg"):
             from mutagen.flac import FLAC
             try:
@@ -179,7 +181,7 @@ def get_library_lyrics():
                 if lyrics:
                     return jsonify({"lyrics": str(lyrics[0]), "has_lyrics": True, "source": "flac_embedded"})
             except Exception:
-                logger.debug("Suppressed exception", exc_info=True)
+                logger.debug("Reading embedded lyrics failed (other formats)", exc_info=True)
 
         return jsonify({"lyrics": "No synchronized or embedded lyrics found for this track.", "has_lyrics": False})
     except Exception as e:
@@ -234,6 +236,42 @@ def get_exact_duplicates():
 def get_probable_duplicates():
     dups = LibraryIntelligence.find_probable_recording_duplicates()
     return jsonify({"duplicates": dups, "count": len(dups)})
+
+
+@bp.route("/api/duplicates/resolve/plan", methods=["GET"])
+def plan_duplicate_resolution():
+    """What a one-click cleanup would do. Nothing is changed."""
+    return jsonify(LibraryIntelligence.plan_duplicate_resolution(include_probable=request.args.get("probable", "1") != "0"))
+
+
+@bp.route("/api/duplicates/resolve/apply", methods=["POST"])
+def apply_duplicate_resolution():
+    pairs = (request.json or {}).get("pairs") or []
+    if not isinstance(pairs, list) or not pairs:
+        return jsonify({"success": False, "error": "Nothing selected"}), 400
+    for pair in pairs:
+        if not isinstance(pair, dict) or not all(_is_user_media_path(Path(str(pair.get(k, ""))).resolve()) for k in ("keep", "remove")):
+            return jsonify({"success": False, "error": "Access denied: path outside project boundary"}), 403
+    try:
+        res = LibraryIntelligence.apply_duplicate_resolution([{"keep": str(Path(p["keep"]).resolve()), "remove": str(Path(p["remove"]).resolve())} for p in pairs])
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, **res})
+
+
+@bp.route("/api/duplicates/resolve/undo", methods=["POST"])
+def undo_duplicate_resolution():
+    batch_id = ((request.json or {}).get("batch_id") or "").strip()
+    try:
+        restored = LibraryIntelligence.undo_duplicate_resolution(batch_id)
+    except ValueError as e:
+        return jsonify({"success": False, "error": str(e)}), 400
+    return jsonify({"success": True, "restored": restored})
+
+
+@bp.route("/api/duplicates/resolve/last", methods=["GET"])
+def last_duplicate_resolution():
+    return jsonify({"last": LibraryIntelligence.last_duplicate_resolution()})
 
 
 @bp.route("/api/duplicates/move-backup", methods=["POST"])
@@ -298,6 +336,41 @@ def clean_temp_buffers():
 
 
 # ================= METADATA AUDIT & REPAIR WORKFLOW =================
+# ---- online lookup (MusicBrainz + Cover Art Archive); proposals stay on the server until applied
+@bp.route("/api/autofix/start", methods=["POST"])
+def autofix_start():
+    data = request.json or {}
+    filter_type = data.get("filter", "all")
+    if filter_type not in ("all", "missing_tags", "missing_art"):
+        return jsonify({"success": False, "error": "Unknown filter"}), 400
+    try:
+        run_id = MetadataEnricher.start(filter_type, int(data.get("limit", 50)))
+    except RuntimeError as e:
+        return jsonify({"success": False, "error": str(e)}), 409
+    return jsonify({"success": True, "id": run_id}), 202
+
+
+@bp.route("/api/autofix/status", methods=["GET"])
+def autofix_status():
+    return jsonify(MetadataEnricher.status())
+
+
+@bp.route("/api/autofix/cancel", methods=["POST"])
+def autofix_cancel():
+    return jsonify({"success": True, "was_running": MetadataEnricher.cancel()})
+
+
+@bp.route("/api/autofix/apply", methods=["POST"])
+def autofix_apply():
+    selections = (request.json or {}).get("selections") or []
+    if not isinstance(selections, list) or not selections:
+        return jsonify({"success": False, "error": "Nothing selected"}), 400
+    for sel in selections:
+        if not isinstance(sel, dict) or not _is_user_media_path(Path(str(sel.get("path", ""))).resolve()):
+            return jsonify({"success": False, "error": "Access denied: path outside project boundary"}), 403
+    return jsonify({"success": True, **MetadataEnricher.apply(selections)})
+
+
 @bp.route("/api/metadata/repair/items", methods=["GET"])
 def get_metadata_repair_items():
     filter_type = request.args.get("filter", "all")
