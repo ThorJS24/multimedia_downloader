@@ -24,10 +24,10 @@ from src.web.server import app
 
 class TestSpotifyDownloaderSuite(unittest.TestCase):
     def test_01_storage_containment(self):
-        """Verify strict storage containment on D: drive"""
-        self.assertTrue(str(PROJECT_ROOT).lower().startswith("d:\\mini-projects\\spotify_playlist_downloader"))
-        self.assertTrue(str(TEMP_DIR).lower().startswith("d:\\mini-projects\\spotify_playlist_downloader"))
-        self.assertTrue(str(get_downloads_path()).lower().startswith("d:\\mini-projects\\spotify_playlist_downloader"))
+        """Verify strict storage containment: data, temp files and downloads stay inside the project folder"""
+        repo = Path(__file__).resolve().parent.parent
+        for name, path in (("project root", PROJECT_ROOT), ("temp dir", TEMP_DIR), ("downloads", get_downloads_path())):
+            self.assertTrue(Path(path).resolve().is_relative_to(repo), f"{name} {path} is outside {repo}")
         self.assertEqual(os.environ.get("TEMP"), str(TEMP_DIR))
         self.assertEqual(os.environ.get("TMP"), str(TEMP_DIR))
 
