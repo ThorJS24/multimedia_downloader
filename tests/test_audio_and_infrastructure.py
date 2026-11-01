@@ -302,7 +302,7 @@ class TestDesktopShell(unittest.TestCase):
         app_ = DesktopApp(port=5998, headless=True)
         out = []
         with patch("src.desktop_shell.instance_lock") as lock, \
-                patch("src.web.server.app.run") as run, \
+                patch("src.web.server.serve_app") as run, \
                 patch("src.web.server.start_background_services") as services, \
                 patch("builtins.print", side_effect=lambda *a, **k: out.append(" ".join(map(str, a)))), \
                 patch("src.desktop_shell.time") as fake_time:

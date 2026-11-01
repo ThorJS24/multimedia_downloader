@@ -3,10 +3,10 @@
 # Which sidebar destination owns each section (mirrors HUBS in static/js/core.js).
 HUB_OF = {
     "dashboard": "home",
-    "fetch": "downloads", "queue": "downloads", "matching": "downloads",
+    "fetch": "downloads", "queue": "downloads", "history": "downloads", "matching": "downloads",
     "library": "library", "search": "library", "intelligence": "library", "quality_lab": "library",
     "comparator": "library", "optimizer": "library",
-    "sync": "automation", "monitor": "automation", "watcher": "automation",
+    "sync": "automation", "monitor": "automation", "watcher": "automation", "rules": "automation", "plugins": "automation",
     "settings": "settings", "logs": "settings",
 }
 
